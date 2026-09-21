@@ -1,3 +1,8 @@
+/* Fonts for the PostdocWorks landing page (app/page.tsx) -- matches the verified reference file
+   exactly, loaded the same way it is there rather than fighting next/font over literal family
+   name strings used throughout that page's inline styles. Must precede @import "tailwindcss"
+   below -- @import rules have to come before all other rules, tailwindcss included. */
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@500;600;700;800&family=Lora:ital,wght@0,500;0,600;1,600&family=Work+Sans:wght@400;500;600&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -595,172 +600,113 @@ p {
 }
 
 /* ---------------------------------------------------------------- */
-/* The eye -- verified reference asset, ported as exactly as         */
-/* possible (colors, coordinates, keyframe timings unchanged).       */
-/* id-based lid selectors became classes so more than one instance   */
-/* of the eye can render on a page without collisions.               */
+/* The eye -- one unified mark, everywhere: the landing page's clean */
+/* shape (a navy frame around a lens) carrying full expression. The  */
+/* lens scales vertically for every blink/squint/widen; the iris     */
+/* group carries gaze, roam, and pulse on top of it.                 */
 /* ---------------------------------------------------------------- */
 
-.eye-svg .iris-pupil,
-.eye-svg .pupil-inner,
-.eye-svg .lid {
+.eye-svg .eye-lens,
+.eye-svg .eye-iris,
+.eye-svg .eye-pupil,
+.eye-svg .eye-spark {
   transform-box: fill-box;
   transform-origin: center;
 }
-.eye-svg .lid-top {
-  transform: translateY(-130px);
+.eye-svg .eye-spark {
+  opacity: 0;
 }
-.eye-svg .lid-bottom {
-  transform: translateY(130px);
-}
-
-/* One-shot "waking up" entrance, added beyond the reference: starts closed, opens, and the iris
-   pops wide before settling -- plays once per mount via the .eye-enter class. */
-.eye-svg.eye-enter .lid-top {
-  animation: eyeEnterLidTop 0.9s cubic-bezier(0.34, 1.4, 0.4, 1) both;
-}
-.eye-svg.eye-enter .lid-bottom {
-  animation: eyeEnterLidBottom 0.9s cubic-bezier(0.34, 1.4, 0.4, 1) both;
-}
-.eye-svg.eye-enter .iris-pupil {
-  animation: eyeEnterIris 0.9s cubic-bezier(0.34, 1.4, 0.4, 1) both;
-}
-@keyframes eyeEnterLidTop {
-  0% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(0);
-  }
-  100% {
-    transform: translateY(-130px);
-  }
-}
-@keyframes eyeEnterLidBottom {
-  0% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(0);
-  }
-  100% {
-    transform: translateY(130px);
-  }
-}
-@keyframes eyeEnterIris {
-  0% {
-    transform: scale(0.85);
-  }
-  65% {
-    transform: scale(1.22);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-/* Typing reaction, added beyond the reference: the iris grows while the postdoc is actively
-   composing a message, a visible "it's paying attention to you" beat. */
-.eye-svg .iris-pupil {
+.eye-svg .eye-iris {
   transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-.eye-svg.is-excited .iris-pupil {
-  transform: scale(1.14);
+
+/* Idle: genuinely alive -- blinks naturally every few seconds */
+.eye-svg.behavior-idle .eye-lens {
+  animation: eyeIdleBlink 5.5s ease-in-out infinite;
+}
+@keyframes eyeIdleBlink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95%,
+  97% {
+    transform: scaleY(0.05);
+  }
 }
 
-.eye-svg .crack-path {
-  opacity: 0;
-  transition: opacity 0.4s ease;
+/* Thinking: the iris roams, searching, the pupil pulses, plus a quicker blink */
+.eye-svg.behavior-thinking .eye-lens {
+  animation: eyeThinkBlink 3.2s ease-in-out infinite;
 }
-.eye-svg .spark-group,
-.eye-svg .spark-rays {
-  opacity: 0;
-  transform-box: fill-box;
-  transform-origin: center;
+.eye-svg.behavior-thinking .eye-iris {
+  animation: eyeRoam 3.6s ease-in-out infinite;
 }
-
-.eye-svg.behavior-thinking .iris-pupil {
-  animation: eyeIrisRoll 4s ease-in-out infinite;
+.eye-svg.behavior-thinking .eye-pupil {
+  animation: eyePupilPulse 1.6s ease-in-out infinite;
 }
-.eye-svg.behavior-thinking .pupil-inner {
-  animation: eyePupilPulse 1.8s ease-in-out infinite;
+@keyframes eyeThinkBlink {
+  0%,
+  88%,
+  100% {
+    transform: scaleY(1);
+  }
+  92%,
+  96% {
+    transform: scaleY(0.05);
+  }
 }
-.eye-svg.behavior-thinking .lid-top {
-  animation: eyeBlinkTop 3.2s ease-in-out infinite;
-}
-.eye-svg.behavior-thinking .lid-bottom {
-  animation: eyeBlinkBottom 3.2s ease-in-out infinite;
-}
-
-@keyframes eyeIrisRoll {
+@keyframes eyeRoam {
   0% {
-    transform: translate(-20px, 0px);
+    transform: translate(-16px, 0px);
   }
   25% {
-    transform: translate(-8px, -3.5px);
+    transform: translate(-6px, -6px);
   }
   50% {
-    transform: translate(20px, 0px);
+    transform: translate(16px, 0px);
   }
   75% {
-    transform: translate(8px, 3.5px);
+    transform: translate(6px, 6px);
   }
   100% {
-    transform: translate(-20px, 0px);
+    transform: translate(-16px, 0px);
   }
 }
 @keyframes eyePupilPulse {
-  0% {
-    transform: translate(4px, 1px) scale(1.05);
-  }
-  25% {
-    transform: translate(-2px, -3px) scale(0.85);
+  0%,
+  100% {
+    transform: scale(1);
   }
   50% {
-    transform: translate(-4px, 2px) scale(1.08);
-  }
-  75% {
-    transform: translate(3px, -2px) scale(0.97);
-  }
-  100% {
-    transform: translate(4px, 1px) scale(1.05);
-  }
-}
-@keyframes eyeBlinkTop {
-  0%,
-  88%,
-  100% {
-    transform: translateY(-130px);
-  }
-  92%,
-  96% {
-    transform: translateY(0);
-  }
-}
-@keyframes eyeBlinkBottom {
-  0%,
-  88%,
-  100% {
-    transform: translateY(130px);
-  }
-  92%,
-  96% {
-    transform: translateY(0);
+    transform: scale(0.8);
   }
 }
 
-.eye-svg.behavior-stuck .lid-top {
-  transform: translateY(-70px);
-  transition: transform 0.35s ease;
-}
-.eye-svg.behavior-stuck .lid-bottom {
-  transform: translateY(70px);
+/* Stuck: narrows to a squint and holds -- pupil stays visible -- releases on its own */
+.eye-svg.behavior-stuck .eye-lens {
+  transform: scaleY(0.4);
   transition: transform 0.35s ease;
 }
 
-.eye-svg.behavior-spark .spark-group,
-.eye-svg.behavior-spark .spark-rays {
+/* Spark: widens with excitement and fires a gold burst */
+.eye-svg.behavior-spark .eye-lens {
+  animation: eyeSparkLens 1.1s ease-out 1;
+}
+.eye-svg.behavior-spark .eye-spark {
   animation: eyeSparkPulse 1.1s ease-out 1;
+}
+@keyframes eyeSparkLens {
+  0% {
+    transform: scaleY(1);
+  }
+  30% {
+    transform: scaleY(1.18);
+  }
+  100% {
+    transform: scaleY(1);
+  }
 }
 @keyframes eyeSparkPulse {
   0% {
@@ -769,7 +715,7 @@ p {
   }
   35% {
     opacity: 1;
-    transform: scale(1.25);
+    transform: scale(1.2);
   }
   100% {
     opacity: 0;
@@ -777,34 +723,58 @@ p {
   }
 }
 
-.eye-svg[data-usage-tier="1"] .crack-path[data-tier="1"] {
-  opacity: 1;
+/* One-shot "waking up" entrance -- placed *after* the behavior rules above so it wins the
+   cascade over .behavior-idle while .eye-enter is present (both target .eye-lens/.eye-iris).
+   Starts closed, opens, the iris pops wide before settling; plays once per mount, then the class
+   is removed so .behavior-idle's own ambient blink takes back over cleanly. */
+.eye-svg.eye-enter .eye-lens {
+  animation: eyeEnterLens 0.6s cubic-bezier(0.34, 1.5, 0.4, 1) both;
 }
-.eye-svg[data-usage-tier="2"] .crack-path[data-tier="1"],
-.eye-svg[data-usage-tier="2"] .crack-path[data-tier="2"] {
-  opacity: 1;
+.eye-svg.eye-enter .eye-iris {
+  animation: eyeEnterIris 0.6s cubic-bezier(0.34, 1.5, 0.4, 1) both;
 }
-.eye-svg[data-usage-tier="3"] .crack-path[data-tier="1"],
-.eye-svg[data-usage-tier="3"] .crack-path[data-tier="2"],
-.eye-svg[data-usage-tier="3"] .crack-path[data-tier="3"] {
-  opacity: 1;
+@keyframes eyeEnterLens {
+  0%,
+  55% {
+    transform: scaleY(0.05);
+  }
+  100% {
+    transform: scaleY(1);
+  }
+}
+@keyframes eyeEnterIris {
+  0%,
+  55% {
+    transform: scale(0.7);
+  }
+  85% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Typing reaction, added beyond the reference: the iris grows while actively composing */
+.eye-svg.is-excited .eye-iris {
+  transform: scale(1.16);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .eye-svg.behavior-thinking .iris-pupil,
-  .eye-svg.behavior-thinking .pupil-inner,
-  .eye-svg.behavior-thinking .lid-top,
-  .eye-svg.behavior-thinking .lid-bottom,
-  .eye-svg.behavior-spark .spark-group,
-  .eye-svg.behavior-spark .spark-rays {
+  .eye-svg.behavior-idle .eye-lens,
+  .eye-svg.behavior-thinking .eye-lens,
+  .eye-svg.behavior-thinking .eye-iris,
+  .eye-svg.behavior-thinking .eye-pupil,
+  .eye-svg.behavior-spark .eye-lens,
+  .eye-svg.behavior-spark .eye-spark,
+  .eye-svg.eye-enter .eye-lens,
+  .eye-svg.eye-enter .eye-iris {
     animation: none !important;
   }
-  .eye-svg .lid,
-  .eye-svg .crack-path {
+  .eye-svg.behavior-stuck .eye-lens {
     transition: none !important;
   }
-  .eye-svg.behavior-spark .spark-group,
-  .eye-svg.behavior-spark .spark-rays {
+  .eye-svg.behavior-spark .eye-spark {
     opacity: 1;
   }
 }
@@ -1079,24 +1049,8 @@ p {
   gap: 10px;
 }
 .persona-msg-eye-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--navy);
   flex-shrink: 0;
   margin-top: 2px;
-  position: relative;
-}
-.persona-msg-eye-mark::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: #ffffff;
-  transform: translate(-50%, -50%);
 }
 .persona-bubble-user {
   background: var(--navy);
@@ -1218,3 +1172,4 @@ p {
     display: none;
   }
 }
+

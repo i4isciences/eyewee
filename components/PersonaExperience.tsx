@@ -237,13 +237,19 @@ export function PersonaExperience() {
           <div className="persona-thread-inner">
             {messages.map((message) => (
               <div key={message.id} className={`persona-msg persona-msg-${message.sender}`}>
-                {message.sender === "eyewee" && <div className="persona-msg-eye-mark" />}
+                {message.sender === "eyewee" && (
+                  <div className="persona-msg-eye-mark">
+                    <Eye state="idle" size={26} interactive={false} />
+                  </div>
+                )}
                 <div className={`persona-bubble persona-bubble-${message.sender}`}>{message.text}</div>
               </div>
             ))}
             {sending && (
               <div className="persona-thinking-indicator">
-                <div className="persona-msg-eye-mark" />
+                <div className="persona-msg-eye-mark">
+                  <Eye state="thinking" size={26} interactive={false} />
+                </div>
                 <div className="persona-thinking-dots">
                   <span />
                   <span />
