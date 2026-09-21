@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { LandingHeroEye } from "@/components/LandingHeroEye";
+import { Eye } from "@/components/eye/Eye";
 import { Reveal } from "@/components/Reveal";
-import { requireUser } from "@/lib/supabase/server";
 
 const CROSSINGS = [
   {
@@ -22,11 +21,17 @@ const CROSSINGS = [
     primary: "Your PI handed you the hard problem. We help you crack it.",
     alt: "200 papers deep, one clear next step.",
   },
+  {
+    // Draft copy, not yet locked like the three above -- Trust is newly confirmed as eyewee's
+    // fourth pillar (badge/verification layer + Doc2Postdoc's contact-sharing safety layer).
+    kicker: "Trust",
+    meaning: "verification & safety crossing",
+    primary: "Your verified record travels with you. Your contact details stay yours to share.",
+    alt: "Badges checked against ORCID and USPTO — not just claimed.",
+  },
 ];
 
-export default async function LandingPage() {
-  const { user } = await requireUser();
-
+export default function LandingPage() {
   return (
     <div className="landing">
       <header className="landing-nav">
@@ -36,38 +41,26 @@ export default async function LandingPage() {
               <path
                 d="M2 12C7 4 15 1 20 1s13 3 18 11c-5 8-13 11-18 11S7 20 2 12Z"
                 fill="none"
-                stroke="var(--gold)"
+                stroke="var(--navy)"
                 strokeWidth="1.6"
               />
               <circle cx="20" cy="12" r="5.4" fill="var(--gold)" />
-              <circle cx="20" cy="12" r="2.3" fill="#080c1a" />
+              <circle cx="20" cy="12" r="2.3" fill="var(--navy)" />
             </svg>
             <span className="landing-wordmark">eyewee</span>
           </Link>
           <nav className="landing-nav-links">
-            {user ? (
-              <Link href="/home" className="landing-nav-cta">
-                Use eyewee
-              </Link>
-            ) : (
-              <>
-                <Link href="/sign-in" className="landing-nav-link">
-                  Sign in
-                </Link>
-                <Link href="/sign-up" className="btn btn-gold">
-                  Get started
-                </Link>
-              </>
-            )}
+            <Link href="/home" className="landing-nav-cta">
+              Use eyewee
+            </Link>
           </nav>
         </div>
       </header>
 
       <section className="landing-hero">
-        <div className="glow-field" />
         <div className="landing-hero-inner">
           <div className="landing-hero-eye">
-            <LandingHeroEye size={150} />
+            <Eye state="idle" size={150} />
           </div>
           <p className="landing-hero-kicker">eyewee</p>
           <h1 className="landing-hero-master">
@@ -78,8 +71,8 @@ export default async function LandingPage() {
             in a new country, with no time left over.
           </p>
           <div className="landing-hero-ctas">
-            <Link href="/sign-up" className="btn btn-gold">
-              Get started
+            <Link href="/home" className="btn btn-gold">
+              Use eyewee
             </Link>
             <a href="#crossings" className="btn btn-outline">
               See how it works
@@ -126,7 +119,7 @@ export default async function LandingPage() {
             <br />
             It sees.
           </p>
-          <Link href="/sign-up" className="btn btn-outline">
+          <Link href="/home" className="btn btn-outline">
             Meet eyewee
           </Link>
         </Reveal>

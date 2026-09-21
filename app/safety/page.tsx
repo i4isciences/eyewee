@@ -16,17 +16,17 @@ export default function SafetyPage() {
               <path
                 d="M2 12C7 4 15 1 20 1s13 3 18 11c-5 8-13 11-18 11S7 20 2 12Z"
                 fill="none"
-                stroke="var(--gold)"
+                stroke="var(--navy)"
                 strokeWidth="1.6"
               />
               <circle cx="20" cy="12" r="5.4" fill="var(--gold)" />
-              <circle cx="20" cy="12" r="2.3" fill="#080c1a" />
+              <circle cx="20" cy="12" r="2.3" fill="var(--navy)" />
             </svg>
             <span className="landing-wordmark">eyewee</span>
           </Link>
           <nav className="landing-nav-links">
-            <Link href="/sign-in" className="landing-nav-link">
-              Sign in
+            <Link href="/home" className="landing-nav-link">
+              Use eyewee
             </Link>
           </nav>
         </div>

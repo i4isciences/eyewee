@@ -1,11 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { EyePair, type EyeState } from "@/components/eye3d/EyePair";
+import { useRef, useState } from "react";
+import { Eye, type EyeState } from "@/components/eye/Eye";
 
-type Conversation = { id: string; title: string; created_at: string; updated_at: string };
-type Message = { id?: string; sender: "user" | "eyewee"; text: string; created_at?: string };
+type Message = { id: string; sender: "user" | "eyewee"; text: string };
+type Conversation = { id: string; title: string; updatedAt: number; messages: Message[] };
 
 const SUGGESTED_PROMPTS = [
   "Help me explain my project to someone outside my field",
@@ -14,72 +13,70 @@ const SUGGESTED_PROMPTS = [
   "Help me get through the literature systematically",
 ];
 
-function initials(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  return (parts[0][0] + (parts[1]?.[0] || "")).toUpperCase();
+// Matches the verified reference's own auto-return timings for these two states.
+const AUTO_RETURN_MS: Partial<Record<EyeState, number>> = { stuck: 3000, spark: 1100 };
+
+function uid() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
 
-function relativeDay(iso: string) {
-  const date = new Date(iso);
-  const now = new Date();
-  const dayMs = 24 * 60 * 60 * 1000;
-  const diff = Math.floor((now.setHours(0, 0, 0, 0) - new Date(date).setHours(0, 0, 0, 0)) / dayMs);
+function now() {
+  return Date.now();
+}
+
+function relativeDay(ms: number) {
+  const diff = Math.floor((Date.now() - ms) / (24 * 60 * 60 * 1000));
   if (diff <= 0) return "Today";
   if (diff === 1) return "Yesterday";
   if (diff < 7) return `${diff} days ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function PersonaExperience({
-  initialConversations,
-  displayName,
-  institution,
-}: {
-  initialConversations: Conversation[];
-  displayName: string;
-  institution: string;
-}) {
-  const router = useRouter();
-  const [conversations, setConversations] = useState(initialConversations);
+// No accounts, nothing persisted server-side: conversations live only in this tab, for this
+// visit. That's the trade-off of removing login -- see docs/SPEC.md for why the chat itself
+// still round-trips through a real (canned, non-model) reply endpoint rather than being purely
+// client-side.
+export function PersonaExperience() {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
   const [mode, setMode] = useState<"hero" | "thread">("hero");
   const [heroInput, setHeroInput] = useState("");
   const [composerInput, setComposerInput] = useState("");
+  const [heroTyping, setHeroTyping] = useState(false);
+  const [composerTyping, setComposerTyping] = useState(false);
   const [eyeState, setEyeState] = useState<EyeState>("idle");
   const [sending, setSending] = useState(false);
   const threadRef = useRef<HTMLDivElement>(null);
   const settleTimer = useRef<number | null>(null);
-  const firstName = (displayName || "there").split(" ")[0];
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setEyeState("wake"), 350);
-    return () => window.clearTimeout(timer);
-  }, []);
+  const active = conversations.find((c) => c.id === activeId) || null;
+  const messages = active?.messages ?? [];
 
-  function focusListening() {
-    setEyeState((current) => (current === "wake" ? "listening" : current));
-  }
-  function blurToWake(value: string) {
-    if (!value.trim()) setEyeState((current) => (current === "listening" ? "wake" : current));
+  function settleTo(state: EyeState, after?: EyeState) {
+    if (settleTimer.current) window.clearTimeout(settleTimer.current);
+    setEyeState(state);
+    const delay = AUTO_RETURN_MS[state];
+    if (delay) settleTimer.current = window.setTimeout(() => setEyeState(after ?? "idle"), delay);
   }
 
-  async function loadConversation(id: string) {
+  function loadConversation(id: string) {
     setActiveId(id);
     setMode("thread");
-    const response = await fetch(`/api/conversations/${id}/messages`);
-    const data = (await response.json()) as { messages?: Message[] };
-    setMessages(data.messages ?? []);
     requestAnimationFrame(() => threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight }));
   }
 
-  async function startNewConversation() {
+  function startNewConversation() {
     setMode("hero");
     setActiveId(null);
-    setMessages([]);
     setHeroInput("");
-    setEyeState("wake");
+  }
+
+  function appendMessage(conversationId: string, message: Message) {
+    setConversations((prev) =>
+      prev
+        .map((c) => (c.id === conversationId ? { ...c, messages: [...c.messages, message] } : c))
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+    );
   }
 
   async function submit(rawText: string) {
@@ -87,49 +84,42 @@ export function PersonaExperience({
     if (!text || sending) return;
     if (settleTimer.current) window.clearTimeout(settleTimer.current);
 
+    setHeroTyping(false);
+    setComposerTyping(false);
+
     let conversationId = activeId;
     if (!conversationId) {
-      const response = await fetch("/api/conversations", { method: "POST" });
-      const data = (await response.json()) as { conversation?: Conversation };
-      if (!data.conversation) return;
-      conversationId = data.conversation.id;
-      setConversations((prev) => [data.conversation as Conversation, ...prev]);
+      conversationId = uid();
+      const title = text.length > 60 ? `${text.slice(0, 57)}...` : text;
+      const conversation: Conversation = { id: conversationId, title, updatedAt: now(), messages: [] };
+      setConversations((prev) => [conversation, ...prev]);
       setActiveId(conversationId);
     }
 
     setMode("thread");
-    setMessages((prev) => [...prev, { sender: "user", text }]);
     setHeroInput("");
     setComposerInput("");
+    appendMessage(conversationId, { id: uid(), sender: "user", text });
     setSending(true);
     setEyeState("thinking");
     requestAnimationFrame(() => threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight }));
 
     try {
-      const response = await fetch(`/api/conversations/${conversationId}/messages`, {
+      const response = await fetch("/api/reply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      const data = (await response.json()) as { reply?: string; error?: string };
+      const data = (await response.json()) as { reply?: string };
       if (!response.ok || !data.reply) {
-        setMessages((prev) => [
-          ...prev,
-          { sender: "eyewee", text: "I ran into a snag there. Mind trying that again?" },
-        ]);
-        setEyeState("wake");
+        appendMessage(conversationId, { id: uid(), sender: "eyewee", text: "I ran into a snag there. Mind trying that again?" });
+        settleTo("stuck");
       } else {
-        setMessages((prev) => [...prev, { sender: "eyewee", text: data.reply as string }]);
-        setConversations((prev) =>
-          prev
-            .map((c) => (c.id === conversationId ? { ...c, updated_at: new Date().toISOString() } : c))
-            .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))
-        );
-        setEyeState("spark");
-        settleTimer.current = window.setTimeout(() => setEyeState("wake"), 1300);
+        appendMessage(conversationId, { id: uid(), sender: "eyewee", text: data.reply });
+        settleTo("spark");
       }
     } catch {
-      setEyeState("wake");
+      settleTo("stuck");
     } finally {
       setSending(false);
       requestAnimationFrame(() => threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight }));
@@ -139,36 +129,20 @@ export function PersonaExperience({
   if (mode === "hero") {
     return (
       <div className="hero-page">
-        <div className="glow-field" />
         <div className="hero-topbar">
           <span className="hero-wordmark">eyewee</span>
-          <div className="hero-topbar-actions">
-            {conversations.length > 0 && (
-              <button type="button" className="hero-topbar-link" onClick={() => loadConversation(conversations[0].id)}>
-                Recent conversations
-              </button>
-            )}
-            <button
-              type="button"
-              className="hero-topbar-link"
-              onClick={async () => {
-                await fetch("/api/auth", { method: "DELETE" });
-                router.push("/");
-                router.refresh();
-              }}
-            >
-              Sign out
+          {conversations.length > 0 && (
+            <button type="button" className="hero-topbar-link" onClick={() => loadConversation(conversations[0].id)}>
+              Recent conversations
             </button>
-          </div>
+          )}
         </div>
 
         <div className="hero-center">
           <div className="hero-eyes">
-            <EyePair state={eyeState} size={190} />
+            <Eye state={eyeState} size={190} excited={heroTyping} />
           </div>
-          <p className="hero-greeting">
-            {eyeState === "idle" ? "…" : `What are you working on, ${firstName}?`}
-          </p>
+          <p className="hero-greeting">What are you working on?</p>
           <p className="hero-greeting-sub">Say it — eyewee carries it, guides it, and cracks the toughest problems.</p>
 
           <div className="hero-search">
@@ -177,12 +151,9 @@ export function PersonaExperience({
                 type="text"
                 value={heroInput}
                 placeholder="Ask eyewee anything"
-                onFocus={focusListening}
-                onBlur={() => blurToWake(heroInput)}
-                onChange={(event) => {
-                  setHeroInput(event.target.value);
-                  if (event.target.value.trim()) focusListening();
-                }}
+                onFocus={() => setHeroTyping(true)}
+                onBlur={() => setHeroTyping(false)}
+                onChange={(event) => setHeroInput(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
@@ -225,7 +196,7 @@ export function PersonaExperience({
         </button>
 
         <div className="persona-side-section persona-side-recent">
-          <h2>Recent</h2>
+          <h2>This visit</h2>
           {conversations.length === 0 ? (
             <p className="persona-empty-note">Your conversations will show up here.</p>
           ) : (
@@ -238,7 +209,7 @@ export function PersonaExperience({
                     onClick={() => loadConversation(c.id)}
                   >
                     {c.title}
-                    <span className="persona-recent-when">{relativeDay(c.updated_at)}</span>
+                    <span className="persona-recent-when">{relativeDay(c.updatedAt)}</span>
                   </button>
                 </li>
               ))}
@@ -247,40 +218,25 @@ export function PersonaExperience({
         </div>
 
         <div className="persona-sidebar-footer">
-          <div className="persona-avatar">{initials(displayName || "eyewee")}</div>
-          <div className="persona-profile-info">
-            <div className="persona-profile-name">{displayName || "Your account"}</div>
-            {institution && <div className="persona-profile-sub">{institution}</div>}
-          </div>
+          <p className="persona-sidebar-note">Nothing here is saved once you close this tab.</p>
         </div>
       </aside>
 
       <div className="persona-main">
         <div className="persona-main-header">
           <div className="persona-eye-wrap">
-            <EyePair state={eyeState} size={64} />
+            <Eye state={eyeState} size={64} excited={composerTyping} />
           </div>
           <div>
             <div className="persona-header-name">eyewee</div>
             <div className="persona-header-status">{eyeState}</div>
           </div>
-          <button
-            type="button"
-            className="persona-sign-out"
-            onClick={async () => {
-              await fetch("/api/auth", { method: "DELETE" });
-              router.push("/");
-              router.refresh();
-            }}
-          >
-            Sign out
-          </button>
         </div>
 
         <div className="persona-thread" ref={threadRef}>
           <div className="persona-thread-inner">
-            {messages.map((message, index) => (
-              <div key={message.id ?? index} className={`persona-msg persona-msg-${message.sender}`}>
+            {messages.map((message) => (
+              <div key={message.id} className={`persona-msg persona-msg-${message.sender}`}>
                 {message.sender === "eyewee" && <div className="persona-msg-eye-mark" />}
                 <div className={`persona-bubble persona-bubble-${message.sender}`}>{message.text}</div>
               </div>
@@ -304,12 +260,9 @@ export function PersonaExperience({
               rows={1}
               placeholder="Message eyewee"
               value={composerInput}
-              onFocus={focusListening}
-              onBlur={() => blurToWake(composerInput)}
-              onChange={(event) => {
-                setComposerInput(event.target.value);
-                if (event.target.value.trim()) focusListening();
-              }}
+              onFocus={() => setComposerTyping(true)}
+              onBlur={() => setComposerTyping(false)}
+              onChange={(event) => setComposerInput(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
