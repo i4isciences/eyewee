@@ -152,7 +152,7 @@ export default function LandingPage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <Eye state="idle" size={40} interactive={false} />
+          <Eye state="wake" size={40} />
           <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: "21px", letterSpacing: "-0.01em", color: "#182D5A" }}>
             eyewee<sup style={{ fontFamily: "'Work Sans', sans-serif", fontSize: "10px", fontWeight: 600, color: "#8A93A6", marginLeft: "1px" }}>SM</sup>
           </div>
@@ -196,7 +196,7 @@ export default function LandingPage() {
         }}
       >
         <div style={{ position: "relative", width: "168px", height: "108px", marginBottom: "18px" }}>
-          <Eye state="idle" size={168} />
+          <Eye state="wake" size={168} />
         </div>
         <div style={{ fontFamily: "'Work Sans', sans-serif", fontWeight: 600, fontSize: "13px", letterSpacing: "0.16em", color: ACCENT, marginBottom: "26px" }}>
           EYEWEE<sup style={{ fontSize: "9px", letterSpacing: 0, color: "#A8B0C0" }}>SM</sup>
@@ -556,7 +556,7 @@ export default function LandingPage() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <Eye state="idle" size={36} interactive={false} />
+          <Eye state="wake" size={36} />
           <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: "19px", color: "#182D5A" }}>eyewee</div>
         </div>
         <div style={{ fontFamily: "'Work Sans', sans-serif", fontSize: "13px", color: "#8A93A6" }}>Powered by i4iSciences&trade;</div>

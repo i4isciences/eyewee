@@ -1,10 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eye, type EyeState } from "@/components/eye/Eye";
+import type { StorageRepository } from "@/lib/storage/providers/types";
+import { STORAGE_REPOSITORIES } from "@/lib/storage/providers/types";
+import { MicButton } from "@/components/voice/MicButton";
+import { useVoiceSession } from "@/components/voice/useVoiceSession";
 
 type Message = { id: string; sender: "user" | "eyewee"; text: string };
-type Conversation = { id: string; title: string; updatedAt: number; messages: Message[] };
+type ConversationSummary = { id: string; title: string; updatedAt: string };
+type StorageRow = { repository: StorageRepository; connected: boolean; externalAccountLabel: string | null };
+type MemoryFact = { id: string; text: string; category: string };
 
 const SUGGESTED_PROMPTS = [
   "Help me explain my project to someone outside my field",
@@ -13,113 +19,171 @@ const SUGGESTED_PROMPTS = [
   "Help me get through the literature systematically",
 ];
 
-// Matches the verified reference's own auto-return timings for these two states.
-const AUTO_RETURN_MS: Partial<Record<EyeState, number>> = { stuck: 3000, spark: 1100 };
+const REPOSITORY_LABEL: Record<StorageRepository, string> = {
+  zenodo: "Zenodo",
+  osf: "OSF",
+  dryad: "Dryad",
+  figshare: "Figshare",
+};
+
+// Matches the locked reference's own auto-return timing for Spark. There is no equivalent for
+// error handling anymore -- "stuck" isn't one of the 5 locked states (idle/wake/listening/
+// thinking/spark); errors just settle back to idle and speak for themselves via the message text.
+const SPARK_AUTO_RETURN_MS = 1100;
 
 function uid() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
 
-function now() {
-  return Date.now();
-}
-
-function relativeDay(ms: number) {
-  const diff = Math.floor((Date.now() - ms) / (24 * 60 * 60 * 1000));
+function relativeDay(iso: string) {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000));
   if (diff <= 0) return "Today";
   if (diff === 1) return "Yesterday";
   if (diff < 7) return `${diff} days ago`;
-  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-// No accounts, nothing persisted server-side: conversations live only in this tab, for this
-// visit. That's the trade-off of removing login -- see docs/SPEC.md for why the chat itself
-// still round-trips through a real (canned, non-model) reply endpoint rather than being purely
-// client-side.
+// eyewee is account-free (no login, no email) but conversations, storage connections, and memory
+// are now real and persisted server-side, keyed to an anonymous per-browser device id
+// (lib/eyewee/session/deviceId.ts) instead of an account. Real send-message replies stay behind
+// the crisis-response gate -- see app/api/conversations/[id]/messages/route.ts -- so `data.reply`
+// is still the same canned "still being built" text today; only the round trip changed.
 export function PersonaExperience() {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [mode, setMode] = useState<"hero" | "thread">("hero");
   const [heroInput, setHeroInput] = useState("");
   const [composerInput, setComposerInput] = useState("");
-  const [heroTyping, setHeroTyping] = useState(false);
-  const [composerTyping, setComposerTyping] = useState(false);
   const [eyeState, setEyeState] = useState<EyeState>("idle");
   const [sending, setSending] = useState(false);
+  const [storageRows, setStorageRows] = useState<StorageRow[]>([]);
+  const [memoryFacts, setMemoryFacts] = useState<MemoryFact[]>([]);
   const threadRef = useRef<HTMLDivElement>(null);
-  const settleTimer = useRef<number | null>(null);
+  const sparkTimer = useRef<number | null>(null);
+  const voice = useVoiceSession();
 
-  const active = conversations.find((c) => c.id === activeId) || null;
-  const messages = active?.messages ?? [];
+  useEffect(() => {
+    fetch("/api/conversations")
+      .then((r) => r.json())
+      .then((data: { conversations?: ConversationSummary[] }) => setConversations(data.conversations ?? []))
+      .catch(() => {});
+    fetch("/api/storage/connections")
+      .then((r) => r.json())
+      .then((data: { connections?: StorageRow[] }) => setStorageRows(data.connections ?? []))
+      .catch(() => {});
+    fetch("/api/memory")
+      .then((r) => r.json())
+      .then((data: { facts?: MemoryFact[] }) => setMemoryFacts(data.facts ?? []))
+      .catch(() => {});
+  }, []);
 
-  function settleTo(state: EyeState, after?: EyeState) {
-    if (settleTimer.current) window.clearTimeout(settleTimer.current);
-    setEyeState(state);
-    const delay = AUTO_RETURN_MS[state];
-    if (delay) settleTimer.current = window.setTimeout(() => setEyeState(after ?? "idle"), delay);
+  function settleToSpark() {
+    if (sparkTimer.current) window.clearTimeout(sparkTimer.current);
+    setEyeState("spark");
+    sparkTimer.current = window.setTimeout(() => setEyeState("idle"), SPARK_AUTO_RETURN_MS);
   }
 
-  function loadConversation(id: string) {
+  // Only wakes from idle, and only reverts to idle if still awake -- never clobbers
+  // listening/thinking/spark if something else started while the field was focused.
+  function wakeOnFocus() {
+    setEyeState((prev) => (prev === "idle" ? "wake" : prev));
+  }
+  function settleOnBlur() {
+    setEyeState((prev) => (prev === "wake" ? "idle" : prev));
+  }
+
+  async function loadConversation(id: string) {
     setActiveId(id);
     setMode("thread");
+    setMessages([]);
     requestAnimationFrame(() => threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight }));
+    try {
+      const response = await fetch(`/api/conversations/${id}/messages`);
+      const data = (await response.json()) as { messages?: Message[] };
+      setMessages(data.messages ?? []);
+      requestAnimationFrame(() => threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight }));
+    } catch {
+      // Leave the thread empty rather than blocking the UI -- the sidebar item still works if retried.
+    }
   }
 
   function startNewConversation() {
     setMode("hero");
     setActiveId(null);
+    setMessages([]);
     setHeroInput("");
   }
 
-  function appendMessage(conversationId: string, message: Message) {
-    setConversations((prev) =>
-      prev
-        .map((c) => (c.id === conversationId ? { ...c, messages: [...c.messages, message] } : c))
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-    );
+  async function disconnectStorage(repository: StorageRepository) {
+    await fetch(`/api/storage/connections/${repository}`, { method: "DELETE" }).catch(() => {});
+    setStorageRows((prev) => prev.map((row) => (row.repository === repository ? { ...row, connected: false, externalAccountLabel: null } : row)));
+  }
+
+  async function handleMicClick() {
+    if (voice.recording) {
+      setEyeState("thinking");
+      const text = await voice.stopRecording();
+      if (text) submit(text);
+      else setEyeState("idle");
+      return;
+    }
+    setEyeState("wake");
+    const started = await voice.startRecording();
+    setEyeState(started ? "listening" : "idle");
   }
 
   async function submit(rawText: string) {
     const text = rawText.trim();
     if (!text || sending) return;
-    if (settleTimer.current) window.clearTimeout(settleTimer.current);
-
-    setHeroTyping(false);
-    setComposerTyping(false);
+    if (sparkTimer.current) window.clearTimeout(sparkTimer.current);
 
     let conversationId = activeId;
     if (!conversationId) {
-      conversationId = uid();
       const title = text.length > 60 ? `${text.slice(0, 57)}...` : text;
-      const conversation: Conversation = { id: conversationId, title, updatedAt: now(), messages: [] };
-      setConversations((prev) => [conversation, ...prev]);
-      setActiveId(conversationId);
+      try {
+        const response = await fetch("/api/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title }),
+        });
+        const data = (await response.json()) as { conversation?: ConversationSummary };
+        if (!data.conversation) return;
+        conversationId = data.conversation.id;
+        setConversations((prev) => [data.conversation as ConversationSummary, ...prev]);
+        setActiveId(conversationId);
+      } catch {
+        setEyeState("idle");
+        return;
+      }
     }
 
     setMode("thread");
     setHeroInput("");
     setComposerInput("");
-    appendMessage(conversationId, { id: uid(), sender: "user", text });
+    setMessages((prev) => [...prev, { id: uid(), sender: "user", text }]);
     setSending(true);
     setEyeState("thinking");
     requestAnimationFrame(() => threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight }));
 
     try {
-      const response = await fetch("/api/reply", {
+      const response = await fetch(`/api/conversations/${conversationId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      const data = (await response.json()) as { reply?: string };
-      if (!response.ok || !data.reply) {
-        appendMessage(conversationId, { id: uid(), sender: "eyewee", text: "I ran into a snag there. Mind trying that again?" });
-        settleTo("stuck");
+      const data = (await response.json()) as { eyeweeMessage?: Message; error?: string };
+      if (!response.ok || !data.eyeweeMessage) {
+        setMessages((prev) => [...prev, { id: uid(), sender: "eyewee", text: data.error ?? "I ran into a snag there. Mind trying that again?" }]);
+        setEyeState("idle");
       } else {
-        appendMessage(conversationId, { id: uid(), sender: "eyewee", text: data.reply });
-        settleTo("spark");
+        setMessages((prev) => [...prev, data.eyeweeMessage as Message]);
+        setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, updatedAt: new Date().toISOString() } : c)).sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)));
+        settleToSpark();
+        void voice.speak(data.eyeweeMessage.text);
       }
     } catch {
-      settleTo("stuck");
+      setEyeState("idle");
     } finally {
       setSending(false);
       requestAnimationFrame(() => threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight }));
@@ -140,7 +204,7 @@ export function PersonaExperience() {
 
         <div className="hero-center">
           <div className="hero-eyes">
-            <Eye state={eyeState} size={190} excited={heroTyping} />
+            <Eye state={eyeState} size={190} />
           </div>
           <p className="hero-greeting">What are you working on?</p>
           <p className="hero-greeting-sub">Say it — eyewee carries it, guides it, and cracks the toughest problems.</p>
@@ -151,8 +215,8 @@ export function PersonaExperience() {
                 type="text"
                 value={heroInput}
                 placeholder="Ask eyewee anything"
-                onFocus={() => setHeroTyping(true)}
-                onBlur={() => setHeroTyping(false)}
+                onFocus={wakeOnFocus}
+                onBlur={settleOnBlur}
                 onChange={(event) => setHeroInput(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
@@ -161,6 +225,7 @@ export function PersonaExperience() {
                   }
                 }}
               />
+              <MicButton recording={voice.recording} transcribing={voice.transcribing} voiceError={voice.voiceError} onClick={handleMicClick} />
               <button
                 type="button"
                 className="hero-search-send"
@@ -195,8 +260,46 @@ export function PersonaExperience() {
           <span className="persona-new-chat-plus">+</span> New conversation
         </button>
 
+        <div className="persona-side-section">
+          <h2>Storage</h2>
+          <ul className="persona-storage-list">
+            {STORAGE_REPOSITORIES.map((repository) => {
+              const row = storageRows.find((r) => r.repository === repository);
+              return (
+                <li key={repository} className="persona-storage-row">
+                  <span>{REPOSITORY_LABEL[repository]}</span>
+                  {row?.connected ? (
+                    <button type="button" className="persona-storage-btn" onClick={() => disconnectStorage(repository)}>
+                      Disconnect
+                    </button>
+                  ) : (
+                    <a className="persona-storage-btn" href={`/api/storage/connect/${repository}`}>
+                      Connect
+                    </a>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        <div className="persona-side-section">
+          <h2>Memory</h2>
+          {memoryFacts.length === 0 ? (
+            <p className="persona-empty-note">eyewee hasn&rsquo;t saved anything about you yet.</p>
+          ) : (
+            <ul className="persona-recent-list">
+              {memoryFacts.map((fact) => (
+                <li key={fact.id} className="persona-memory-item">
+                  {fact.text}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         <div className="persona-side-section persona-side-recent">
-          <h2>This visit</h2>
+          <h2>Recent</h2>
           {conversations.length === 0 ? (
             <p className="persona-empty-note">Your conversations will show up here.</p>
           ) : (
@@ -218,14 +321,14 @@ export function PersonaExperience() {
         </div>
 
         <div className="persona-sidebar-footer">
-          <p className="persona-sidebar-note">Nothing here is saved once you close this tab.</p>
+          <p className="persona-sidebar-note">Saved to this device — no account needed.</p>
         </div>
       </aside>
 
       <div className="persona-main">
         <div className="persona-main-header">
           <div className="persona-eye-wrap">
-            <Eye state={eyeState} size={64} excited={composerTyping} />
+            <Eye state={eyeState} size={64} />
           </div>
           <div>
             <div className="persona-header-name">eyewee</div>
@@ -239,7 +342,7 @@ export function PersonaExperience() {
               <div key={message.id} className={`persona-msg persona-msg-${message.sender}`}>
                 {message.sender === "eyewee" && (
                   <div className="persona-msg-eye-mark">
-                    <Eye state="idle" size={26} interactive={false} />
+                    <Eye state="wake" size={26} />
                   </div>
                 )}
                 <div className={`persona-bubble persona-bubble-${message.sender}`}>{message.text}</div>
@@ -248,7 +351,7 @@ export function PersonaExperience() {
             {sending && (
               <div className="persona-thinking-indicator">
                 <div className="persona-msg-eye-mark">
-                  <Eye state="thinking" size={26} interactive={false} />
+                  <Eye state="thinking" size={26} />
                 </div>
                 <div className="persona-thinking-dots">
                   <span />
@@ -266,8 +369,8 @@ export function PersonaExperience() {
               rows={1}
               placeholder="Message eyewee"
               value={composerInput}
-              onFocus={() => setComposerTyping(true)}
-              onBlur={() => setComposerTyping(false)}
+              onFocus={wakeOnFocus}
+              onBlur={settleOnBlur}
               onChange={(event) => setComposerInput(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -276,6 +379,7 @@ export function PersonaExperience() {
                 }
               }}
             />
+            <MicButton recording={voice.recording} transcribing={voice.transcribing} voiceError={voice.voiceError} onClick={handleMicClick} />
             <button
               type="button"
               className="persona-send-btn"
@@ -286,7 +390,7 @@ export function PersonaExperience() {
               &#8593;
             </button>
           </div>
-          <p className="persona-composer-note">eyewee can make mistakes. Check important information independently.</p>
+          <p className="persona-composer-note">eyewee can make mistakes. Check important information independently. Patient names, MRNs, or other health-identifying info don&rsquo;t belong here.</p>
         </div>
       </div>
     </div>

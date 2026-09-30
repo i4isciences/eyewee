@@ -22,7 +22,7 @@ export function LegalPageShell({ title, updated, children }: { title: string; up
         }}
       >
         <Link href="/" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          <Eye state="idle" size={36} interactive={false} />
+          <Eye state="wake" size={36} />
           <div style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: "19px", letterSpacing: "-0.01em", color: "#182D5A" }}>eyewee</div>
         </Link>
         <Link href="/#waitlist" style={{ fontFamily: "'Work Sans', sans-serif", fontWeight: 600, fontSize: "14px", color: "#FFFFFF", background: "#182D5A", padding: "10px 20px", borderRadius: "8px" }}>
