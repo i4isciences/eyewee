@@ -3,7 +3,23 @@
 import { useState } from "react";
 import type { DeckEdition, DeckResult } from "@/lib/eyewee/leverage/pipeline";
 
-function EditionCard({ edition, label }: { edition: DeckEdition; label: string }) {
+async function downloadEdition(title: string, edition: DeckEdition) {
+  const response = await fetch("/api/leverage/decks/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, edition }),
+  });
+  if (!response.ok) return;
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${title.replace(/[^a-z0-9-_]+/gi, "-").toLowerCase()}-${edition.kind}.html`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function EditionCard({ title, edition, label }: { title: string; edition: DeckEdition; label: string }) {
   return (
     <div className="deck-card">
       <div className="deck-card-header">
@@ -19,8 +35,8 @@ function EditionCard({ edition, label }: { edition: DeckEdition; label: string }
           </li>
         ))}
       </ol>
-      <button type="button" className="btn btn-outline" disabled title="Export format not finalized yet — see docs/DEVELOPMENT_PLAN.md §8.1">
-        Download (pending export format)
+      <button type="button" className="btn btn-outline" onClick={() => downloadEdition(title, edition)}>
+        Download
       </button>
     </div>
   );
@@ -80,8 +96,8 @@ export function DeckGeneratorPanel() {
 
       {result && (
         <div className="deck-grid">
-          <EditionCard edition={result.technicalEdition} label="Technical edition" />
-          <EditionCard edition={result.laymanEdition} label="Layman's edition" />
+          <EditionCard title={finding.slice(0, 60)} edition={result.technicalEdition} label="Technical edition" />
+          <EditionCard title={finding.slice(0, 60)} edition={result.laymanEdition} label="Layman's edition" />
         </div>
       )}
     </section>

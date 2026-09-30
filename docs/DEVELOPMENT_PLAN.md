@@ -501,11 +501,16 @@ manually-verified PubMed/GenBank/EMBL results for a fixed sample set of findings
 the six-layer pipeline (§6.11), the 5-state eye model (§2, §6.3), Trust's locked copy (§1), and the
 biomedical-first field-scope doc (applied where it touches eyewee; see below for what doesn't).
 
+**Also resolved 2026-09-30 — deck-generation export format** (§6.10): a self-contained, printable
+HTML file per edition (`lib/eyewee/leverage/deckExport.ts`, `/api/leverage/decks/export`,
+live-tested), not a generated `.pptx`. Chosen specifically because slide content is still
+placeholder text pending the crisis-response gate — a PPTX-generation library is real added weight
+for a feature that can't produce real content yet. Zero new dependencies; revisit if a real
+`.pptx` deliverable becomes an actual requirement once Layer 6 content is live.
+
 **Still open:**
 
-1. **Deck-generation export format** (§6.10) — PPTX vs. HTML/PDF for the layman/technical editions,
-   not specified anywhere found.
-2. **The field-scope doc's other two action items belong in `postdocworks`, not here** — generalizing
+1. **The field-scope doc's other two action items belong in `postdocworks`, not here** — generalizing
    the credential-application `PMID` field into a source-tagged literature-reference field, and
    reserving empty Doc2Postdoc taxonomy placeholder slots. Both are schema/copy changes in
    `postdocworks`' own migrations and UI, not eyewee's. Not implemented in this pass — flagging the
