@@ -1,5 +1,20 @@
 # eyewee — Full Build & Architecture Plan
 
+> **v6 — 2026-10-08.** Ranjit answered all five open §8.2 product decisions. Everything each
+> answer unblocked is now built and live-tested — see §8.2 for the detail on each. Headline
+> changes: (1) a new **internal-testing mechanism** (`/api/internal/enable-testing`) lets the team
+> test real Claude replies without touching the public crisis-response switch, which stays exactly
+> as closed as before; (2) **Memory's write path is built** (suggest → approve → save, with a
+> locked content-exclusion filter, edit/delete support); (3) **pricing's structural shape is
+> built** (device tier field, feature-flag table, real usage numbers feeding the `Eye` component's
+> `usagePercent` tint) — no billing, no enforcement, exactly as instructed. New migration
+> `202610080001_eyewee_tier_and_usage.sql` — applied directly to the live database this pass (this
+> sandbox could reach the Postgres host directly this time, unlike the previous migration which
+> needed the Supabase dashboard; verified via a live round trip before and after). Also: a bug
+> surfaced by live-testing the memory-suggestion feature (Claude's API rejects a turn list ending
+> in an assistant message) was caught and fixed before being reported as working — see
+> `lib/eyewee/claude/memorySuggestion.ts`.
+>
 > **v5 — 2026-09-30.** The four missing "locked" documents from §8.1 (v4) were supplied and are now
 > built in:
 > - **Six-layer "crack the project" pipeline** — `lib/eyewee/leverage/pipeline.ts`, live-tested:
@@ -520,12 +535,46 @@ for a feature that can't produce real content yet. Zero new dependencies; revisi
 
 ### 8.2 Product decisions (need Ran, not the developer)
 
-1. **Memory write-path model** (automatic / explicit-only / hybrid) — blocks Phase 6.
-2. **Crisis-response clearance mechanics** — who flips the gate, how it's recorded — blocks Phase 4.
-3. **Which Claude API configuration** (standard vs. HIPAA-ready BAA) — shapes §6.6.
-4. **Exact wellbeing-guardrail filter rules** and the new **immigration/visa boundary policy**
-   (§6.6) — both need locked policy text, not an approximation.
-5. **Pricing-tier structure** (§6.7) — what's free vs. paid, and what it gates.
+**Answered 2026-10-07/08 by Ranjit — all now built:**
+
+1. **Memory write-path model** — ✅ **hybrid.** eyewee suggests, postdoc approves before anything
+   saves; saved facts are visible, editable, and deletable. Locked rule: never suggest or save
+   mental-health, medical, immigration-case, or other sensitive personal detail. Built as
+   `lib/eyewee/claude/memorySuggestion.ts` (the suggestion call) + `lib/eyewee/memory.ts` (write
+   path) + `lib/eyewee/guardrails/memorySafety.ts` (the enforced exclusion filter — not just a
+   prompt instruction) + `POST/PATCH/DELETE /api/memory[...]`. Live-tested: a real suggestion came
+   back, was approved, edited, and deleted; directly POSTing a sensitive-sounding fact was
+   correctly rejected with a 422.
+2. **Crisis-response clearance mechanics** — Ranjit: nobody reviewing yet, starts from scratch; two
+   written sign-offs needed (privacy/AI lawyer + licensed mental-health professional), he makes the
+   final call, developer flips the switch only on his written word. **New mechanism this pass:**
+   the public switch (`EYEWEE_CRISIS_RESPONSE_GATE_OPEN`) stays untouched/closed, exactly as
+   before — but Ranjit also asked for "chat stays open for internal testing by the team," which
+   didn't exist yet. Built `lib/eyewee/guardrails/internalTest.ts` +
+   `/api/internal/enable-testing?token=...`: visiting that URL (token only shared with the team,
+   not linked anywhere in the UI) marks *that browser* as an internal tester via an httpOnly
+   cookie, unlocking live Claude replies and memory suggestions for that browser only — the public
+   switch and the public experience are completely unaffected. Live-tested both sides: without the
+   token, still the canned reply; with it, a real, detailed Claude response.
+3. **Which Claude API configuration** — ✅ confirmed **standard, no BAA, no HIPAA coverage.**
+   Recorded directly in `lib/eyewee/claude/client.ts`. The PHI filter and composer warning (§6.6)
+   stay on regardless of gate state, per Ranjit's explicit instruction.
+4. **Wellbeing/immigration wording** — Ranjit: the current placeholder wording is fine for internal
+   testing only, must not reach real users, and counsel/a clinician will supply the approved final
+   text. Since it's now gated by the internal-test mechanism above (§8.2 item 2), that requirement
+   is structurally satisfied, not just a comment — real users still only ever get the canned
+   reply. The immigration line was updated to match his exact framing ("sourced, general process
+   answers... routes to International Office or an immigration attorney" for case specifics).
+5. **Pricing-tier structure** — ✅ shape confirmed (numbers not decided, billing explicitly not
+   built): free core; role-based tiers (`postdoc_base` / `faculty_premium`); paywall activates
+   after usage habit forms, not at signup; no feature gating decided yet. Built: migration
+   `202610080001_eyewee_tier_and_usage.sql` (`eyewee_device_profile.tier`, `eyewee_feature_flags`
+   seeded with `voice`/`storage_connections`/`organize`, all ungated), `lib/eyewee/tier/{profile,
+   featureFlags,usage}.ts`, `GET /api/usage`. The "eye turns reddish at 100% usage, no lockout"
+   visual was already built last session as `Eye`'s `usagePercent` prop (§6.3's rebuild) — now
+   actually wired to real per-device daily message counts via `PersonaExperience.tsx`. The daily
+   allowance (50 messages) is a **placeholder constant**, clearly marked in `usage.ts` — swap in
+   real per-tier numbers there once decided, no schema change needed.
 6. **Whether Doc2Postdoc/PostdocWorks-internal detail belongs in this document.** Resolved for now
    as: **no** — this doc stays scoped to eyewee itself; Doc2Postdoc detail lives in
    `postdocworks/docs/doc2postdoc-spec.md`. Revisit if that's wrong.

@@ -1011,9 +1011,71 @@ p {
   line-height: 1.5;
   padding: 4px 0;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
 }
 .persona-memory-item:last-child {
   border-bottom: none;
+}
+.persona-memory-item span {
+  cursor: pointer;
+  flex: 1;
+}
+.persona-memory-item span:hover {
+  color: var(--ink);
+}
+.persona-memory-delete {
+  border: none;
+  background: none;
+  color: var(--ink-dim);
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+  padding: 2px 4px;
+}
+.persona-memory-delete:hover {
+  color: #b3261e;
+}
+.persona-memory-editing {
+  gap: 6px;
+}
+.persona-memory-editing input {
+  flex: 1;
+  font-size: 12.5px;
+  border: 1px solid var(--gold);
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+.persona-memory-editing button {
+  border: none;
+  background: none;
+  color: var(--gold-deep);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.persona-fact-suggestion {
+  margin: 0 18px 14px;
+  background: var(--bg-elevated-2);
+  border: 1px solid var(--gold);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.persona-fact-suggestion p {
+  font-size: 12.5px;
+  color: var(--ink);
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+.persona-fact-suggestion-actions {
+  display: flex;
+  gap: 8px;
+}
+.persona-fact-suggestion-actions .btn {
+  padding: 7px 14px;
+  font-size: 12.5px;
 }
 .persona-sidebar-footer {
   padding: 14px 18px;

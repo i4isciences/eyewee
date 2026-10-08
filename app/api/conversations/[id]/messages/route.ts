@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { getOrCreateDeviceId } from "@/lib/eyewee/session/deviceId";
 import { appendMessage, getMessages, type MessageRecord } from "@/lib/eyewee/conversations";
-import { isCrisisResponseGateOpen } from "@/lib/eyewee/guardrails/crisisGate";
+import { isLiveChatAllowedForRequest } from "@/lib/eyewee/guardrails/crisisGate";
 import { containsPhi } from "@/lib/eyewee/guardrails/phiFilter";
 import { craftReply } from "@/lib/eyewee/reply";
 import { generateEyeweeReply, type ChatTurn } from "@/lib/eyewee/claude/client";
 import { buildSystemPrompt } from "@/lib/eyewee/claude/systemPrompt";
 import { listMemoryFacts } from "@/lib/eyewee/memory";
+import { suggestMemoryFact, type MemorySuggestion } from "@/lib/eyewee/claude/memorySuggestion";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -23,22 +24,27 @@ function toChatHistory(messages: MessageRecord[]): ChatTurn[] {
   return messages.map((m) => ({ role: m.sender === "user" ? "user" : "assistant", content: m.text }));
 }
 
-// The endpoint held behind the crisis-response gate (docs/DEVELOPMENT_PLAN.md §6.6). Building the
-// Claude client (lib/eyewee/claude/client.ts) does NOT flip this gate -- it stays closed by
-// default and only a human explicitly setting EYEWEE_CRISIS_RESPONSE_GATE_OPEN=true after legal +
-// mental-health-professional clearance turns it on. Falls back to the canned reply if the gate is
-// closed, or if the live call fails for any reason -- never leaves the user with a raw error in
-// place of a reply.
-async function draftEyeweeReply(deviceId: string, priorMessages: MessageRecord[], userText: string): Promise<string> {
-  if (!isCrisisResponseGateOpen()) return craftReply(userText);
+// Live for real users only once isCrisisResponseGateOpen() is true (legal + mental-health
+// clearance). Live for the internal team the moment their browser is marked via
+// /api/internal/enable-testing, regardless of that public switch -- see
+// lib/eyewee/guardrails/crisisGate.ts for exactly why those are two separate checks, not one.
+// Falls back to the canned reply if neither applies, or if the live call fails for any reason.
+async function draftEyeweeReply(
+  deviceId: string,
+  priorMessages: MessageRecord[],
+  userText: string,
+  liveAllowed: boolean
+): Promise<{ reply: string; history: ChatTurn[] } > {
+  const history: ChatTurn[] = [...toChatHistory(priorMessages), { role: "user", content: userText }];
+  if (!liveAllowed) return { reply: craftReply(userText), history };
 
   try {
     const memoryFacts = await listMemoryFacts(deviceId).catch(() => []);
     const system = buildSystemPrompt(memoryFacts.map((f) => f.text));
-    const history: ChatTurn[] = [...toChatHistory(priorMessages), { role: "user", content: userText }];
-    return await generateEyeweeReply(system, history);
+    const reply = await generateEyeweeReply(system, history);
+    return { reply, history };
   } catch {
-    return craftReply(userText);
+    return { reply: craftReply(userText), history };
   }
 }
 
@@ -62,8 +68,17 @@ export async function POST(request: Request, { params }: RouteParams) {
   const userMessage = await appendMessage(deviceId, id, "user", text);
   if (userMessage === null) return NextResponse.json({ error: "Conversation not found." }, { status: 404 });
 
-  const replyText = await draftEyeweeReply(deviceId, priorMessages, text);
+  const liveAllowed = await isLiveChatAllowedForRequest();
+  const { reply: replyText, history } = await draftEyeweeReply(deviceId, priorMessages, text, liveAllowed);
   const eyeweeMessage = await appendMessage(deviceId, id, "eyewee", replyText);
 
-  return NextResponse.json({ userMessage, eyeweeMessage });
+  // Memory suggestions need a real Claude call too -- only worth attempting when one just
+  // happened (liveAllowed), and only ever a *suggestion*: nothing is saved without the postdoc's
+  // explicit approval via POST /api/memory (Ranjit, 2026-10-08: hybrid model).
+  let suggestedFact: MemorySuggestion | null = null;
+  if (liveAllowed) {
+    suggestedFact = await suggestMemoryFact([...history, { role: "assistant", content: replyText }]);
+  }
+
+  return NextResponse.json({ userMessage, eyeweeMessage, suggestedFact });
 }

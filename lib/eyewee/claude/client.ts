@@ -3,10 +3,14 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 
 // Real Claude wiring (docs/DEVELOPMENT_PLAN.md §6.2, Phase 4) -- only ever called from
-// app/api/conversations/[id]/messages/route.ts's draftEyeweeReply, and only once
-// isCrisisResponseGateOpen() is true. Building this doesn't flip that gate; it stays closed by
-// default (see lib/eyewee/guardrails/crisisGate.ts) until legal + mental-health-professional
+// app/api/conversations/[id]/messages/route.ts's draftEyeweeReply, gated by
+// isLiveChatAllowedForRequest() (lib/eyewee/guardrails/crisisGate.ts). Building this doesn't flip
+// that gate for real users; it stays closed by default until legal + mental-health-professional
 // clearance, per the product's own locked policy.
+//
+// Confirmed by Ranjit (2026-10-08): this account is STANDARD API access -- no BAA, no HIPAA
+// coverage. Never assume BAA-only features or retention guarantees apply. The PHI filter
+// (lib/eyewee/guardrails/phiFilter.ts) stays on regardless of gate state for exactly this reason.
 const DEFAULT_MODEL = "claude-sonnet-5";
 
 let client: Anthropic | null = null;

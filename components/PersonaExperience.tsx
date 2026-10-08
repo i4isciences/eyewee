@@ -11,6 +11,7 @@ type Message = { id: string; sender: "user" | "eyewee"; text: string };
 type ConversationSummary = { id: string; title: string; updatedAt: string };
 type StorageRow = { repository: StorageRepository; connected: boolean; externalAccountLabel: string | null };
 type MemoryFact = { id: string; text: string; category: string };
+type MemorySuggestion = { text: string; category: string };
 
 const SUGGESTED_PROMPTS = [
   "Help me explain my project to someone outside my field",
@@ -59,9 +60,27 @@ export function PersonaExperience() {
   const [sending, setSending] = useState(false);
   const [storageRows, setStorageRows] = useState<StorageRow[]>([]);
   const [memoryFacts, setMemoryFacts] = useState<MemoryFact[]>([]);
+  const [pendingFact, setPendingFact] = useState<MemorySuggestion | null>(null);
+  const [editingFactId, setEditingFactId] = useState<string | null>(null);
+  const [editingFactText, setEditingFactText] = useState("");
+  const [usagePercent, setUsagePercent] = useState(0);
   const threadRef = useRef<HTMLDivElement>(null);
   const sparkTimer = useRef<number | null>(null);
   const voice = useVoiceSession();
+
+  function refreshMemory() {
+    fetch("/api/memory")
+      .then((r) => r.json())
+      .then((data: { facts?: MemoryFact[] }) => setMemoryFacts(data.facts ?? []))
+      .catch(() => {});
+  }
+
+  function refreshUsage() {
+    fetch("/api/usage")
+      .then((r) => r.json())
+      .then((data: { usagePercent?: number }) => setUsagePercent(data.usagePercent ?? 0))
+      .catch(() => {});
+  }
 
   useEffect(() => {
     fetch("/api/conversations")
@@ -72,11 +91,45 @@ export function PersonaExperience() {
       .then((r) => r.json())
       .then((data: { connections?: StorageRow[] }) => setStorageRows(data.connections ?? []))
       .catch(() => {});
-    fetch("/api/memory")
-      .then((r) => r.json())
-      .then((data: { facts?: MemoryFact[] }) => setMemoryFacts(data.facts ?? []))
-      .catch(() => {});
+    refreshMemory();
+    refreshUsage();
   }, []);
+
+  async function approveFact() {
+    if (!pendingFact) return;
+    await fetch("/api/memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: pendingFact.text, category: pendingFact.category }),
+    }).catch(() => {});
+    setPendingFact(null);
+    refreshMemory();
+  }
+
+  function dismissFact() {
+    setPendingFact(null);
+  }
+
+  async function deleteFact(id: string) {
+    await fetch(`/api/memory/${id}`, { method: "DELETE" }).catch(() => {});
+    setMemoryFacts((prev) => prev.filter((f) => f.id !== id));
+  }
+
+  function startEditingFact(fact: MemoryFact) {
+    setEditingFactId(fact.id);
+    setEditingFactText(fact.text);
+  }
+
+  async function saveEditedFact() {
+    if (!editingFactId) return;
+    const response = await fetch(`/api/memory/${editingFactId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: editingFactText }),
+    });
+    if (response.ok) refreshMemory();
+    setEditingFactId(null);
+  }
 
   function settleToSpark() {
     if (sparkTimer.current) window.clearTimeout(sparkTimer.current);
@@ -172,7 +225,7 @@ export function PersonaExperience() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      const data = (await response.json()) as { eyeweeMessage?: Message; error?: string };
+      const data = (await response.json()) as { eyeweeMessage?: Message; error?: string; suggestedFact?: MemorySuggestion | null };
       if (!response.ok || !data.eyeweeMessage) {
         setMessages((prev) => [...prev, { id: uid(), sender: "eyewee", text: data.error ?? "I ran into a snag there. Mind trying that again?" }]);
         setEyeState("idle");
@@ -181,6 +234,8 @@ export function PersonaExperience() {
         setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, updatedAt: new Date().toISOString() } : c)).sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)));
         settleToSpark();
         void voice.speak(data.eyeweeMessage.text);
+        if (data.suggestedFact) setPendingFact(data.suggestedFact);
+        refreshUsage();
       }
     } catch {
       setEyeState("idle");
@@ -204,7 +259,7 @@ export function PersonaExperience() {
 
         <div className="hero-center">
           <div className="hero-eyes">
-            <Eye state={eyeState} size={190} />
+            <Eye state={eyeState} size={190} usagePercent={usagePercent} />
           </div>
           <p className="hero-greeting">What are you working on?</p>
           <p className="hero-greeting-sub">Say it — eyewee carries it, guides it, and cracks the toughest problems.</p>
@@ -289,14 +344,46 @@ export function PersonaExperience() {
             <p className="persona-empty-note">eyewee hasn&rsquo;t saved anything about you yet.</p>
           ) : (
             <ul className="persona-recent-list">
-              {memoryFacts.map((fact) => (
-                <li key={fact.id} className="persona-memory-item">
-                  {fact.text}
-                </li>
-              ))}
+              {memoryFacts.map((fact) =>
+                editingFactId === fact.id ? (
+                  <li key={fact.id} className="persona-memory-item persona-memory-editing">
+                    <input
+                      type="text"
+                      value={editingFactText}
+                      onChange={(event) => setEditingFactText(event.target.value)}
+                      onKeyDown={(event) => event.key === "Enter" && saveEditedFact()}
+                      autoFocus
+                    />
+                    <button type="button" onClick={saveEditedFact} aria-label="Save">
+                      ✓
+                    </button>
+                  </li>
+                ) : (
+                  <li key={fact.id} className="persona-memory-item">
+                    <span onClick={() => startEditingFact(fact)}>{fact.text}</span>
+                    <button type="button" className="persona-memory-delete" onClick={() => deleteFact(fact.id)} aria-label="Delete">
+                      ×
+                    </button>
+                  </li>
+                )
+              )}
             </ul>
           )}
         </div>
+
+        {pendingFact && (
+          <div className="persona-fact-suggestion">
+            <p>eyewee would like to remember: &ldquo;{pendingFact.text}&rdquo;</p>
+            <div className="persona-fact-suggestion-actions">
+              <button type="button" className="btn btn-gold" onClick={approveFact}>
+                Save it
+              </button>
+              <button type="button" className="btn btn-outline" onClick={dismissFact}>
+                Not now
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="persona-side-section persona-side-recent">
           <h2>Recent</h2>
@@ -328,7 +415,7 @@ export function PersonaExperience() {
       <div className="persona-main">
         <div className="persona-main-header">
           <div className="persona-eye-wrap">
-            <Eye state={eyeState} size={64} />
+            <Eye state={eyeState} size={64} usagePercent={usagePercent} />
           </div>
           <div>
             <div className="persona-header-name">eyewee</div>
