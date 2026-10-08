@@ -1,5 +1,14 @@
 # eyewee — Full Build & Architecture Plan
 
+> **v7 — 2026-10-09.** §10 (PostdocWorks data access) is built — see that section for full detail.
+> Summary: a real, opt-in cross-app connection. A companion endpoint was added to the
+> `postdocworks` repo itself (`app/api/eyewee-link/`, that repo's own `lib/eyewee-link/token.ts`)
+> since this genuinely needed both sides — the first time this plan's work has required editing
+> `postdocworks`, not just flagging a redirect to it. Connected postdocs' real profile, verified
+> ORCID, and live PubMed papers (fetched by ORCID, not a static copy) now feed eyewee's chat
+> context. Live-tested end to end against a real existing postdocworks account, then disconnected
+> immediately after — not a fabricated test account.
+>
 > **v6 — 2026-10-08.** Ranjit answered all five open §8.2 product decisions. Everything each
 > answer unblocked is now built and live-tested — see §8.2 for the detail on each. Headline
 > changes: (1) a new **internal-testing mechanism** (`/api/internal/enable-testing`) lets the team
@@ -624,8 +633,54 @@ for a feature that can't produce real content yet. Zero new dependencies; revisi
 
 ## 10. Giving eyewee access to a postdoc's real PostdocWorks data
 
+**✅ Built and live-tested 2026-10-09**, after the user explicitly confirmed the scope ("people who
+have postdocworks accounts should be able to connect their account with eyewee... pubmed and all
+their research papers"). Exactly the opt-in shape proposed below — not a login wall, nothing
+changes for a device that never connects.
+
+**What was built, across both repos:**
+- **postdocworks** (`lib/eyewee-link/token.ts`, `app/api/eyewee-link/route.ts`): a logged-in
+  postdoc visiting this endpoint gets a short-lived (5 min), HMAC-signed token minted for their
+  real `auth.users` id, then gets redirected straight to eyewee's callback with it. Not logged in
+  → redirected to `/doc2postdoc` to sign in first. postdocworks never shares a password or session
+  cookie with eyewee.
+- **eyewee** (`lib/postdocworksLink/{token,link}.ts`, migration `202610090001_...`,
+  `/api/postdocworks/{connect,callback,profile,disconnect}`): verifies that token (same shared
+  secret, `EYEWEE_POSTDOCWORKS_LINK_SECRET`, identical in both apps' env), stores
+  `device_id ↔ postdocworks_user_id` in a new table, and from then on reads the postdoc's real
+  `doc2postdoc_profiles` + `credential_applications` rows directly — same Supabase project, no API
+  call to postdocworks needed. Disconnect removes eyewee's link only, same pattern as Storage.
+- **Papers, concretely:** postdocworks doesn't store a full publication list (just one
+  credential-verification `pmid`/`orcid` field — see the field-scope doc in §8.1). So "all their
+  research papers" is answered live instead: `lib/eyewee/postdocworks/papers.ts` searches PubMed
+  by the postdoc's verified ORCID (`<orcid>[auid]`, confirmed a real, documented PubMed search
+  field) and returns their actual publication list, not a static copy.
+- **Fed into live chat:** `lib/eyewee/postdocworks/context.ts` folds a connected postdoc's profile
+  + recent papers into the Claude system prompt (same place as Memory facts), so eyewee can
+  actually use this once chat is live (internal testers only, per §8.2 item 2).
+- **Sidebar UI:** a "PostdocWorks" section in `PersonaExperience.tsx`, parallel to Storage —
+  Connect/Disconnect, shows name/research area/badges/paper count once connected.
+
+**Live-tested end to end** using the actual developer's own real postdocworks profile (read-only,
+then disconnected again immediately after): the callback correctly verified a real minted token,
+stored the link, and `/api/postdocworks/profile` returned her real name, research area, bio, a
+real verified ORCID, and **one real, correct paper pulled live from PubMed via that ORCID**.
+Disconnect correctly removed the link. The "not logged into postdocworks" redirect path was tested
+too and works. A missing-migration bug (the new table didn't exist yet) was caught by this live
+test and fixed before being reported as done.
+
+**Scope actually shipped:** `doc2postdoc_profiles` (name, research area, institution, bio, verified
+badges, credibility score) + `credential_applications` (ORCID, Scholar/ResearchGate links) +
+`doc2postdoc_achievements` + live PubMed papers via ORCID. **Not included, by deliberate scope
+cut:** Doc2Postdoc's peer-matching/connections data, reputation/dispute records — those feel like
+they need their own call the same way the Trust-pillar badge-visibility question does (§8.2 item
+7), so they weren't pulled in without being asked.
+
+<details>
+<summary>Original investigation (2026-09-30), kept for context on why this wasn't built immediately</summary>
+
 Requested 2026-09-30: "eyewee should... have access to all their postdoc work." Investigated
-rather than built, because of what was found:
+rather than built at the time, because of what was found:
 
 **The data genuinely exists and is genuinely reachable.** `postdocworks` has real tables for a
 postdoc's actual work — credential applications, Doc2Postdoc signups/matches, profile sections,
@@ -661,3 +716,5 @@ Doc2Postdoc's peer-matching data or reputation/dispute data feels like it needs 
 same spirit as the Trust-pillar/badge-visibility question in §8.2 item 7). Flagging the shape of
 the solution here; the scope and the exact linking mechanism are for the user/Ran to confirm before
 it's built, not something to infer silently.
+
+</details>

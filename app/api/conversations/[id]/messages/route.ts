@@ -8,6 +8,7 @@ import { generateEyeweeReply, type ChatTurn } from "@/lib/eyewee/claude/client";
 import { buildSystemPrompt } from "@/lib/eyewee/claude/systemPrompt";
 import { listMemoryFacts } from "@/lib/eyewee/memory";
 import { suggestMemoryFact, type MemorySuggestion } from "@/lib/eyewee/claude/memorySuggestion";
+import { buildPostdocworksContext } from "@/lib/eyewee/postdocworks/context";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -39,8 +40,11 @@ async function draftEyeweeReply(
   if (!liveAllowed) return { reply: craftReply(userText), history };
 
   try {
-    const memoryFacts = await listMemoryFacts(deviceId).catch(() => []);
-    const system = buildSystemPrompt(memoryFacts.map((f) => f.text));
+    const [memoryFacts, postdocworksContext] = await Promise.all([
+      listMemoryFacts(deviceId).catch(() => []),
+      buildPostdocworksContext(deviceId).catch(() => null),
+    ]);
+    const system = buildSystemPrompt(memoryFacts.map((f) => f.text), postdocworksContext ?? undefined);
     const reply = await generateEyeweeReply(system, history);
     return { reply, history };
   } catch {

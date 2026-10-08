@@ -12,6 +12,11 @@ type ConversationSummary = { id: string; title: string; updatedAt: string };
 type StorageRow = { repository: StorageRepository; connected: boolean; externalAccountLabel: string | null };
 type MemoryFact = { id: string; text: string; category: string };
 type MemorySuggestion = { text: string; category: string };
+type PostdocworksStatus = {
+  connected: boolean;
+  profile?: { displayName: string; researchArea: string; institution: string; verifiedBadges: string[] };
+  papers?: { title: string; url: string }[];
+};
 
 const SUGGESTED_PROMPTS = [
   "Help me explain my project to someone outside my field",
@@ -64,6 +69,7 @@ export function PersonaExperience() {
   const [editingFactId, setEditingFactId] = useState<string | null>(null);
   const [editingFactText, setEditingFactText] = useState("");
   const [usagePercent, setUsagePercent] = useState(0);
+  const [postdocworks, setPostdocworks] = useState<PostdocworksStatus>({ connected: false });
   const threadRef = useRef<HTMLDivElement>(null);
   const sparkTimer = useRef<number | null>(null);
   const voice = useVoiceSession();
@@ -91,9 +97,18 @@ export function PersonaExperience() {
       .then((r) => r.json())
       .then((data: { connections?: StorageRow[] }) => setStorageRows(data.connections ?? []))
       .catch(() => {});
+    fetch("/api/postdocworks/profile")
+      .then((r) => r.json())
+      .then((data: PostdocworksStatus) => setPostdocworks(data))
+      .catch(() => {});
     refreshMemory();
     refreshUsage();
   }, []);
+
+  async function disconnectPostdocworks() {
+    await fetch("/api/postdocworks/disconnect", { method: "DELETE" }).catch(() => {});
+    setPostdocworks({ connected: false });
+  }
 
   async function approveFact() {
     if (!pendingFact) return;
@@ -336,6 +351,32 @@ export function PersonaExperience() {
               );
             })}
           </ul>
+        </div>
+
+        <div className="persona-side-section">
+          <h2>PostdocWorks</h2>
+          {postdocworks.connected && postdocworks.profile ? (
+            <div className="persona-pdw-connected">
+              <p className="persona-pdw-name">{postdocworks.profile.displayName || "Connected"}</p>
+              <p className="persona-pdw-detail">{postdocworks.profile.researchArea || postdocworks.profile.institution}</p>
+              {postdocworks.profile.verifiedBadges.length > 0 && (
+                <p className="persona-pdw-badges">{postdocworks.profile.verifiedBadges.join(" · ")}</p>
+              )}
+              {postdocworks.papers && postdocworks.papers.length > 0 && (
+                <p className="persona-pdw-detail">{postdocworks.papers.length} paper(s) found via PubMed</p>
+              )}
+              <button type="button" className="persona-storage-btn" onClick={disconnectPostdocworks}>
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="persona-empty-note">Connect your real PostdocWorks profile and papers so eyewee can use them.</p>
+              <a className="persona-storage-btn" href="/api/postdocworks/connect">
+                Connect
+              </a>
+            </>
+          )}
         </div>
 
         <div className="persona-side-section">

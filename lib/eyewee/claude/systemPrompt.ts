@@ -30,8 +30,14 @@ Patient data: never ask for, encourage, or retain patient-identifying informatio
 
 Be direct and warm, not corporate. This is someone who is often stressed, isolated, and pressed for time — don't pad responses.`;
 
-export function buildSystemPrompt(memoryFacts: string[] = []): string {
-  if (memoryFacts.length === 0) return BASE_PROMPT;
-  const factLines = memoryFacts.map((fact) => `- ${fact}`).join("\n");
-  return `${BASE_PROMPT}\n\nWhat you already know about this postdoc (use naturally, don't recite it back verbatim):\n${factLines}`;
+export function buildSystemPrompt(memoryFacts: string[] = [], postdocworksContext?: string): string {
+  let prompt = BASE_PROMPT;
+  if (memoryFacts.length > 0) {
+    const factLines = memoryFacts.map((fact) => `- ${fact}`).join("\n");
+    prompt += `\n\nWhat you already know about this postdoc (use naturally, don't recite it back verbatim):\n${factLines}`;
+  }
+  if (postdocworksContext) {
+    prompt += `\n\nThis postdoc has connected their real PostdocWorks account. Real profile/publication data (use naturally, verify specifics with them before acting on anything time-sensitive):\n${postdocworksContext}`;
+  }
+  return prompt;
 }
