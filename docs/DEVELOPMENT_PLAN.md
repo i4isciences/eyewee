@@ -1,5 +1,31 @@
 # eyewee — Full Build & Architecture Plan
 
+> **v8 — 2026-10-10.** UI/UX pass from direct user feedback on the running app:
+> - **Fixed a real layout bug**: the sidebar's "PostdocWorks" section visually overlapped
+>   "Figshare" — every `.persona-side-section` had `flex: 1; min-height: 0`, forcing Storage/
+>   PostdocWorks/Memory/Recent into equal-height slots regardless of actual content, so a
+>   section's content overflowed into its neighbor's space. Fixed to natural-height stacking with
+>   divider lines between sections; the sidebar's existing `overflow-y: auto` now does real work
+>   (the whole sidebar scrolls as a unit when content is tall).
+> - **Per-message actions** (`components/chat/MessageActions.tsx`): a ⋯ menu on every message with
+>   **Reply** (opens an inline composer under that specific message; the quoted snippet + the new
+>   reply both go to the backend as one message, via a private text delimiter —
+>   `lib/eyewee/chat/quoteReply.ts` — not a new schema column) and **Read aloud** (plays that one
+>   message through the existing ElevenLabs TTS path).
+> - **Shared cross-feature nav** (`components/nav/AppNav.tsx`): Chat / Leverage / Document Search
+>   links now appear on every app surface, not just discoverable by guessing a URL.
+> - **Document Search, substantially expanded**: a **Search PubMed** tab (real keyword search,
+>   `lib/eyewee/documents/pubmedSearch.ts`) lets a postdoc find *other people's* papers and load a
+>   real abstract straight into the find-bar — distinct from the Leverage novelty-check (is this
+>   finding already reported?) and the PostdocWorks-papers-by-ORCID lookup (find *my own* papers).
+>   Real file upload now works too: `.txt` directly, `.pdf` via client-side text extraction
+>   (`pdfjs-dist`, added as a new dependency — extraction happens entirely in the browser, the file
+>   never reaches the server).
+> - Confirmed in passing: `npm install pdfjs-dist` surfaced 8 pre-existing audit findings
+>   (including one critical, in `next` itself) that already existed before this change (verified via
+>   `git stash` + re-audit) — not introduced by this work, but worth a `npm audit fix` pass
+>   separately at some point.
+>
 > **v7 — 2026-10-09.** §10 (PostdocWorks data access) is built — see that section for full detail.
 > Summary: a real, opt-in cross-app connection. A companion endpoint was added to the
 > `postdocworks` repo itself (`app/api/eyewee-link/`, that repo's own `lib/eyewee-link/token.ts`)

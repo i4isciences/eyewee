@@ -562,8 +562,8 @@ p {
   z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 20px 28px;
+  justify-content: flex-end;
+  padding: 14px 28px 0;
 }
 .hero-wordmark {
   font-family: var(--font-display);
@@ -578,6 +578,56 @@ p {
 }
 .hero-topbar-link:hover {
   color: var(--gold);
+}
+
+/* ---------------------------------------------------------------- */
+/* Shared cross-feature nav (chat / Leverage / Document Search)      */
+/* ---------------------------------------------------------------- */
+.app-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.app-nav-wordmark {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--ink);
+}
+.app-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.app-nav-link {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  padding: 7px 14px;
+  border-radius: 8px;
+}
+.app-nav-link:hover {
+  color: var(--ink);
+  background: var(--bg-elevated);
+}
+.app-nav-link.is-active {
+  color: var(--navy);
+  background: var(--bg-elevated-2);
+}
+@media (max-width: 560px) {
+  .app-nav {
+    padding: 12px 16px;
+  }
+  .app-nav-links {
+    gap: 0;
+  }
+  .app-nav-link {
+    padding: 6px 9px;
+    font-size: 12px;
+  }
 }
 
 .hero-center {
@@ -927,8 +977,14 @@ p {
 }
 .persona-side-section {
   padding: 4px 18px 18px;
-  flex: 1;
-  min-height: 0;
+  flex-shrink: 0;
+}
+.persona-side-section + .persona-side-section {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+.persona-side-recent {
+  flex: 1 1 auto;
 }
 .persona-side-section h2 {
   font-size: 12px;
@@ -1124,10 +1180,15 @@ p {
 .persona-main-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
   padding: 6px 28px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+}
+.persona-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .persona-eye-wrap {
   flex-shrink: 0;
@@ -1177,22 +1238,137 @@ p {
   flex-shrink: 0;
   margin-top: 2px;
 }
+.persona-bubble-wrap {
+  display: flex;
+  flex-direction: column;
+  max-width: 72%;
+  position: relative;
+}
+.persona-msg-user .persona-bubble-wrap {
+  align-items: flex-end;
+}
+.persona-msg-eyewee .persona-bubble-wrap {
+  align-items: flex-start;
+}
 .persona-bubble-user {
   background: var(--navy);
   color: #ffffff;
   padding: 11px 16px;
   border-radius: 14px 14px 3px 14px;
-  max-width: 66%;
+  max-width: 100%;
   font-size: 14.5px;
   line-height: 1.55;
   font-weight: 500;
 }
 .persona-bubble-eyewee {
   padding: 2px 0;
-  max-width: 72%;
+  max-width: 100%;
   font-size: 14.5px;
   line-height: 1.6;
   color: var(--ink);
+}
+.persona-bubble-quote {
+  font-size: 12px;
+  opacity: 0.75;
+  border-left: 2px solid currentColor;
+  padding: 2px 0 6px 9px;
+  margin-bottom: 6px;
+  font-style: italic;
+}
+
+/* Per-message 3-dot menu (reply / read aloud) */
+.msg-actions {
+  position: relative;
+  margin-top: 4px;
+}
+.msg-actions-trigger {
+  border: none;
+  background: none;
+  color: var(--ink-dim);
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.persona-msg:hover .msg-actions-trigger,
+.msg-actions-trigger:focus-visible {
+  opacity: 1;
+}
+.msg-actions-trigger:hover {
+  background: var(--bg-elevated);
+  color: var(--ink);
+}
+.msg-actions-menu {
+  position: absolute;
+  top: 100%;
+  z-index: 5;
+  margin-top: 4px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px -10px rgba(27, 42, 74, 0.3);
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  overflow: hidden;
+}
+.persona-msg-user .msg-actions-menu {
+  right: 0;
+}
+.persona-msg-eyewee .msg-actions-menu {
+  left: 0;
+}
+.msg-actions-menu button {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: 9px 14px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.msg-actions-menu button:hover {
+  background: var(--bg-elevated);
+}
+
+/* Inline reply composer */
+.persona-reply-box {
+  margin-top: 8px;
+  width: 280px;
+  max-width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.persona-reply-quote {
+  font-size: 11.5px;
+  color: var(--ink-dim);
+  margin: 0 0 6px;
+  font-style: italic;
+}
+.persona-reply-box textarea {
+  width: 100%;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+.persona-reply-box textarea:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+.persona-reply-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.persona-reply-actions .btn {
+  padding: 6px 12px;
+  font-size: 12.5px;
 }
 
 .persona-thinking-indicator {
@@ -1383,6 +1559,61 @@ p {
 }
 .docsearch-back-btn {
   margin-bottom: 14px;
+}
+.docsearch-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.docsearch-tab {
+  padding: 9px 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.docsearch-tab:hover {
+  color: var(--ink);
+}
+.docsearch-tab.is-active {
+  color: var(--navy);
+  border-bottom-color: var(--gold);
+}
+.docsearch-paste-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.docsearch-pubmed-results {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.docsearch-pubmed-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+.docsearch-pubmed-title {
+  font-size: 13.5px;
+  color: var(--ink);
+  margin: 0 0 3px;
+  line-height: 1.4;
+}
+.docsearch-pubmed-meta {
+  font-size: 11.5px;
+  color: var(--ink-dim);
+  margin: 0;
 }
 .docsearch-hint {
   margin: 18px 4px 0;

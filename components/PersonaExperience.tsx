@@ -6,6 +6,9 @@ import type { StorageRepository } from "@/lib/storage/providers/types";
 import { STORAGE_REPOSITORIES } from "@/lib/storage/providers/types";
 import { MicButton } from "@/components/voice/MicButton";
 import { useVoiceSession } from "@/components/voice/useVoiceSession";
+import { AppNav } from "@/components/nav/AppNav";
+import { MessageActions } from "@/components/chat/MessageActions";
+import { formatQuotedReply, splitQuotedReply } from "@/lib/eyewee/chat/quoteReply";
 
 type Message = { id: string; sender: "user" | "eyewee"; text: string };
 type ConversationSummary = { id: string; title: string; updatedAt: string };
@@ -70,6 +73,8 @@ export function PersonaExperience() {
   const [editingFactText, setEditingFactText] = useState("");
   const [usagePercent, setUsagePercent] = useState(0);
   const [postdocworks, setPostdocworks] = useState<PostdocworksStatus>({ connected: false });
+  const [replyingToId, setReplyingToId] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
   const sparkTimer = useRef<number | null>(null);
   const voice = useVoiceSession();
@@ -201,6 +206,29 @@ export function PersonaExperience() {
     setEyeState(started ? "listening" : "idle");
   }
 
+  function startReply(message: Message) {
+    setReplyingToId(message.id);
+    setReplyDraft("");
+  }
+
+  function cancelReply() {
+    setReplyingToId(null);
+    setReplyDraft("");
+  }
+
+  function sendReply(originalMessage: Message) {
+    const draft = replyDraft.trim();
+    if (!draft) return;
+    const quoted = formatQuotedReply(splitQuotedReply(originalMessage.text).body, draft);
+    setReplyingToId(null);
+    setReplyDraft("");
+    submit(quoted);
+  }
+
+  function readMessageAloud(message: Message) {
+    void voice.speak(splitQuotedReply(message.text).body);
+  }
+
   async function submit(rawText: string) {
     const text = rawText.trim();
     if (!text || sending) return;
@@ -263,14 +291,14 @@ export function PersonaExperience() {
   if (mode === "hero") {
     return (
       <div className="hero-page">
-        <div className="hero-topbar">
-          <span className="hero-wordmark">eyewee</span>
-          {conversations.length > 0 && (
+        <AppNav current="chat" />
+        {conversations.length > 0 && (
+          <div className="hero-topbar">
             <button type="button" className="hero-topbar-link" onClick={() => loadConversation(conversations[0].id)}>
               Recent conversations
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="hero-center">
           <div className="hero-eyes">
@@ -455,27 +483,72 @@ export function PersonaExperience() {
 
       <div className="persona-main">
         <div className="persona-main-header">
-          <div className="persona-eye-wrap">
-            <Eye state={eyeState} size={64} usagePercent={usagePercent} />
+          <div className="persona-header-left">
+            <div className="persona-eye-wrap">
+              <Eye state={eyeState} size={64} usagePercent={usagePercent} />
+            </div>
+            <div>
+              <div className="persona-header-name">eyewee</div>
+              <div className="persona-header-status">{eyeState}</div>
+            </div>
           </div>
-          <div>
-            <div className="persona-header-name">eyewee</div>
-            <div className="persona-header-status">{eyeState}</div>
+          <div className="app-nav-links">
+            <a href="/leverage" className="app-nav-link">
+              Leverage
+            </a>
+            <a href="/document-search" className="app-nav-link">
+              Document Search
+            </a>
           </div>
         </div>
 
         <div className="persona-thread" ref={threadRef}>
           <div className="persona-thread-inner">
-            {messages.map((message) => (
-              <div key={message.id} className={`persona-msg persona-msg-${message.sender}`}>
-                {message.sender === "eyewee" && (
-                  <div className="persona-msg-eye-mark">
-                    <Eye state="wake" size={26} />
+            {messages.map((message) => {
+              const { quote, body } = splitQuotedReply(message.text);
+              return (
+                <div key={message.id} className={`persona-msg persona-msg-${message.sender}`}>
+                  {message.sender === "eyewee" && (
+                    <div className="persona-msg-eye-mark">
+                      <Eye state="wake" size={26} />
+                    </div>
+                  )}
+                  <div className="persona-bubble-wrap">
+                    <div className={`persona-bubble persona-bubble-${message.sender}`}>
+                      {quote && <div className="persona-bubble-quote">{quote}</div>}
+                      {body}
+                    </div>
+                    <MessageActions onReply={() => startReply(message)} onReadAloud={() => readMessageAloud(message)} />
+                    {replyingToId === message.id && (
+                      <div className="persona-reply-box">
+                        <p className="persona-reply-quote">Replying to: &ldquo;{body.slice(0, 80)}{body.length > 80 ? "…" : ""}&rdquo;</p>
+                        <textarea
+                          rows={2}
+                          autoFocus
+                          placeholder="Write your reply…"
+                          value={replyDraft}
+                          onChange={(event) => setReplyDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" && !event.shiftKey) {
+                              event.preventDefault();
+                              sendReply(message);
+                            }
+                          }}
+                        />
+                        <div className="persona-reply-actions">
+                          <button type="button" className="btn btn-gold" disabled={!replyDraft.trim()} onClick={() => sendReply(message)}>
+                            Send reply
+                          </button>
+                          <button type="button" className="btn btn-outline" onClick={cancelReply}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-                <div className={`persona-bubble persona-bubble-${message.sender}`}>{message.text}</div>
-              </div>
-            ))}
+                </div>
+              );
+            })}
             {sending && (
               <div className="persona-thinking-indicator">
                 <div className="persona-msg-eye-mark">
