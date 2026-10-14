@@ -13,6 +13,7 @@ export function useVoiceSession() {
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const startRecording = useCallback(async (): Promise<boolean> => {
     setVoiceError(null);
@@ -68,7 +69,13 @@ export function useVoiceSession() {
 
   // Speaking a reply out loud is an enhancement, not a requirement -- failures here stay silent
   // (voiceError is reserved for the input side, where silence would hide a real problem).
+  //
+  // `speaking` tracks actual playback (set false on `onended`/`onpause`, not on `.play()`
+  // resolving -- that promise settles once playback *starts*, not when it finishes, which
+  // previously made `speaking` go false almost immediately while audio was still playing and gave
+  // no way to stop it mid-sentence).
   const speak = useCallback(async (text: string) => {
+    currentAudioRef.current?.pause();
     setSpeaking(true);
     try {
       const response = await fetch("/api/voice/speak", {
@@ -76,18 +83,32 @@ export function useVoiceSession() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
-      if (!response.ok) return;
+      if (!response.ok) {
+        setSpeaking(false);
+        return;
+      }
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
+      currentAudioRef.current = audio;
+      const cleanup = () => {
+        URL.revokeObjectURL(url);
+        setSpeaking(false);
+        if (currentAudioRef.current === audio) currentAudioRef.current = null;
+      };
+      audio.onended = cleanup;
+      audio.onpause = cleanup;
+      audio.onerror = cleanup;
       await audio.play();
     } catch {
-      // silent -- see comment above
-    } finally {
       setSpeaking(false);
+      // silent -- see comment above
     }
   }, []);
 
-  return { recording, transcribing, speaking, voiceError, startRecording, stopRecording, speak };
+  const stopSpeaking = useCallback(() => {
+    currentAudioRef.current?.pause();
+  }, []);
+
+  return { recording, transcribing, speaking, voiceError, startRecording, stopRecording, speak, stopSpeaking };
 }

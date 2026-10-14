@@ -20,6 +20,10 @@ export const STORAGE_PROVIDERS: Record<StorageRepository, OAuthProviderConfig> =
     tokenUrl: "https://accounts.osf.io/oauth2/token",
     clientIdEnvVar: "OSF_OAUTH_CLIENT_ID",
     clientSecretEnvVar: "OSF_OAUTH_CLIENT_SECRET",
+    // Confirmed live 2026-10-14: OSF's authorize endpoint rejects a request with no scope at all
+    // ("missing_request_param: scope"). osf.full_read is the least-privilege real OSF scope for
+    // "reference a postdoc's own deposits" -- revisit if write access is ever actually needed.
+    scope: "osf.full_read",
   },
   dryad: {
     authorizeUrl: "https://datadryad.org/oauth/authorize",

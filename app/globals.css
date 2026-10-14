@@ -1501,6 +1501,23 @@ p {
   border-radius: 8px;
   padding: 8px 10px;
 }
+.stop-speaking-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1.5px solid #b3261e;
+  background: #fdecea;
+  color: #b3261e;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.stop-speaking-btn:hover {
+  background: #b3261e;
+  color: #ffffff;
+}
 .persona-composer-note {
   max-width: 680px;
   margin: 8px auto 0;

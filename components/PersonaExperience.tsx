@@ -324,6 +324,11 @@ export function PersonaExperience() {
                 }}
               />
               <MicButton recording={voice.recording} transcribing={voice.transcribing} voiceError={voice.voiceError} onClick={handleMicClick} />
+              {voice.speaking && (
+                <button type="button" className="stop-speaking-btn" aria-label="Stop speaking" title="Stop speaking" onClick={voice.stopSpeaking}>
+                  ◼
+                </button>
+              )}
               <button
                 type="button"
                 className="hero-search-send"
@@ -581,6 +586,11 @@ export function PersonaExperience() {
               }}
             />
             <MicButton recording={voice.recording} transcribing={voice.transcribing} voiceError={voice.voiceError} onClick={handleMicClick} />
+            {voice.speaking && (
+              <button type="button" className="stop-speaking-btn" aria-label="Stop speaking" title="Stop speaking" onClick={voice.stopSpeaking}>
+                ◼
+              </button>
+            )}
             <button
               type="button"
               className="persona-send-btn"
