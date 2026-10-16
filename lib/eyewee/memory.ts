@@ -9,6 +9,7 @@ export type MemoryFact = {
   id: string;
   text: string;
   category: MemoryCategory;
+  source: string | null;
   createdAt: string;
   lastReferencedAt: string | null;
 };
@@ -24,7 +25,7 @@ export async function listMemoryFacts(deviceId: string): Promise<MemoryFact[]> {
   const supabase = createEyeweeServiceClient();
   const { data, error } = await supabase
     .from("eyewee_device_memory_facts")
-    .select("id, text, category, created_at, last_referenced_at")
+    .select("id, text, category, source, created_at, last_referenced_at")
     .eq("device_id", deviceId)
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -32,6 +33,42 @@ export async function listMemoryFacts(deviceId: string): Promise<MemoryFact[]> {
     id: row.id,
     text: row.text,
     category: row.category,
+    source: row.source,
+    createdAt: row.created_at,
+    lastReferencedAt: row.last_referenced_at,
+  }));
+}
+
+// Lets a well-defined source (currently: a PostdocWorks/Doc2Postdoc connect) write a whole batch
+// of facts atomically-ish and stay re-syncable: every existing fact tagged with this exact
+// `source` gets deleted first, then the fresh batch is inserted. Reconnecting therefore replaces,
+// never piles up duplicates or leaves stale facts behind. Conversation-suggested facts (source
+// null) are never touched by this. Every fact still goes through isSafeToRemember -- a trusted
+// source for the data doesn't exempt it from the same locked content rule.
+export async function replaceSourcedMemoryFacts(
+  deviceId: string,
+  source: string,
+  facts: { text: string; category: MemoryCategory }[]
+): Promise<MemoryFact[]> {
+  const safeFacts = facts.filter((f) => f.text.trim() && isSafeToRemember(f.text));
+  const supabase = createEyeweeServiceClient();
+
+  const { error: deleteError } = await supabase.from("eyewee_device_memory_facts").delete().eq("device_id", deviceId).eq("source", source);
+  if (deleteError) throw deleteError;
+
+  if (safeFacts.length === 0) return [];
+
+  const { data, error: insertError } = await supabase
+    .from("eyewee_device_memory_facts")
+    .insert(safeFacts.map((f) => ({ device_id: deviceId, text: f.text, category: f.category, source })))
+    .select("id, text, category, source, created_at, last_referenced_at");
+  if (insertError) throw insertError;
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    text: row.text,
+    category: row.category,
+    source: row.source,
     createdAt: row.created_at,
     lastReferencedAt: row.last_referenced_at,
   }));
@@ -53,10 +90,10 @@ export async function createMemoryFact(
   const { data, error } = await supabase
     .from("eyewee_device_memory_facts")
     .insert({ device_id: deviceId, text, category, source_conversation_id: sourceConversationId ?? null })
-    .select("id, text, category, created_at, last_referenced_at")
+    .select("id, text, category, source, created_at, last_referenced_at")
     .single();
   if (error) throw error;
-  return { id: data.id, text: data.text, category: data.category, createdAt: data.created_at, lastReferencedAt: data.last_referenced_at };
+  return { id: data.id, text: data.text, category: data.category, source: data.source, createdAt: data.created_at, lastReferencedAt: data.last_referenced_at };
 }
 
 async function assertOwnedFact(deviceId: string, factId: string): Promise<boolean> {
@@ -80,10 +117,10 @@ export async function updateMemoryFact(deviceId: string, factId: string, text: s
     .from("eyewee_device_memory_facts")
     .update({ text })
     .eq("id", factId)
-    .select("id, text, category, created_at, last_referenced_at")
+    .select("id, text, category, source, created_at, last_referenced_at")
     .single();
   if (error) throw error;
-  return { id: data.id, text: data.text, category: data.category, createdAt: data.created_at, lastReferencedAt: data.last_referenced_at };
+  return { id: data.id, text: data.text, category: data.category, source: data.source, createdAt: data.created_at, lastReferencedAt: data.last_referenced_at };
 }
 
 export async function deleteMemoryFact(deviceId: string, factId: string): Promise<boolean> {

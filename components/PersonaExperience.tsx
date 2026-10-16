@@ -13,11 +13,11 @@ import { formatQuotedReply, splitQuotedReply } from "@/lib/eyewee/chat/quoteRepl
 type Message = { id: string; sender: "user" | "eyewee"; text: string };
 type ConversationSummary = { id: string; title: string; updatedAt: string };
 type StorageRow = { repository: StorageRepository; connected: boolean; externalAccountLabel: string | null };
-type MemoryFact = { id: string; text: string; category: string };
+type MemoryFact = { id: string; text: string; category: string; source: string | null };
 type MemorySuggestion = { text: string; category: string };
 type PostdocworksStatus = {
   connected: boolean;
-  profile?: { displayName: string; researchArea: string; institution: string; verifiedBadges: string[] };
+  profile?: { displayName: string; pillarField: string; specialization: string; institution: string; verifiedBadges: string[] };
   papers?: { title: string; url: string }[];
 };
 
@@ -113,6 +113,16 @@ export function PersonaExperience() {
   async function disconnectPostdocworks() {
     await fetch("/api/postdocworks/disconnect", { method: "DELETE" }).catch(() => {});
     setPostdocworks({ connected: false });
+    refreshMemory();
+  }
+
+  async function refreshPostdocworks() {
+    const response = await fetch("/api/postdocworks/refresh", { method: "POST" }).catch(() => null);
+    if (response?.ok) {
+      const data = await response.json();
+      setPostdocworks((prev) => ({ ...prev, profile: data.profile }));
+      refreshMemory();
+    }
   }
 
   async function approveFact() {
@@ -387,24 +397,29 @@ export function PersonaExperience() {
         </div>
 
         <div className="persona-side-section">
-          <h2>PostdocWorks</h2>
+          <h2>Doc2Postdoc</h2>
           {postdocworks.connected && postdocworks.profile ? (
             <div className="persona-pdw-connected">
               <p className="persona-pdw-name">{postdocworks.profile.displayName || "Connected"}</p>
-              <p className="persona-pdw-detail">{postdocworks.profile.researchArea || postdocworks.profile.institution}</p>
+              <p className="persona-pdw-detail">{postdocworks.profile.specialization || postdocworks.profile.pillarField || postdocworks.profile.institution}</p>
               {postdocworks.profile.verifiedBadges.length > 0 && (
                 <p className="persona-pdw-badges">{postdocworks.profile.verifiedBadges.join(" · ")}</p>
               )}
               {postdocworks.papers && postdocworks.papers.length > 0 && (
                 <p className="persona-pdw-detail">{postdocworks.papers.length} paper(s) found via PubMed</p>
               )}
-              <button type="button" className="persona-storage-btn" onClick={disconnectPostdocworks}>
-                Disconnect
-              </button>
+              <div className="persona-pdw-actions">
+                <button type="button" className="persona-storage-btn" onClick={refreshPostdocworks}>
+                  Refresh
+                </button>
+                <button type="button" className="persona-storage-btn" onClick={disconnectPostdocworks}>
+                  Disconnect
+                </button>
+              </div>
             </div>
           ) : (
             <>
-              <p className="persona-empty-note">Connect your real PostdocWorks profile and papers so eyewee can use them.</p>
+              <p className="persona-empty-note">Connect your real Doc2Postdoc profile and papers so eyewee can use them — you&rsquo;ll need to be signed in to postdocworks.</p>
               <a className="persona-storage-btn" href="/api/postdocworks/connect">
                 Connect
               </a>
@@ -434,7 +449,10 @@ export function PersonaExperience() {
                   </li>
                 ) : (
                   <li key={fact.id} className="persona-memory-item">
-                    <span onClick={() => startEditingFact(fact)}>{fact.text}</span>
+                    <span onClick={() => startEditingFact(fact)}>
+                      {fact.source === "postdocworks" && <span className="persona-memory-source-tag">Doc2Postdoc</span>}
+                      {fact.text}
+                    </span>
                     <button type="button" className="persona-memory-delete" onClick={() => deleteFact(fact.id)} aria-label="Delete">
                       ×
                     </button>

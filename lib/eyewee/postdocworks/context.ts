@@ -4,32 +4,22 @@ import { getLinkedPostdocworksUserId } from "@/lib/postdocworksLink/link";
 import { getPostdocworksProfile } from "@/lib/eyewee/postdocworks/profile";
 import { getPapersByOrcid } from "@/lib/eyewee/postdocworks/papers";
 
-// Folds a connected postdoc's real PostdocWorks profile + live PubMed papers into a short text
-// block for the Claude system prompt (systemPrompt.ts). Returns null for anyone who hasn't
-// connected -- the vast majority of eyewee's account-free users -- so this never adds a call for
-// the common case.
+// Only the LIVE part -- a connected postdoc's actual papers, fetched fresh from PubMed by ORCID
+// every time. Everything else about their profile (name, field, institution, badges...) is
+// already in Memory as real facts (lib/eyewee/postdocworks/syncMemory.ts, synced on connect), and
+// listMemoryFacts() already feeds those into the system prompt alongside this -- duplicating them
+// here would just burn tokens saying the same thing twice. Papers deliberately aren't stored as
+// memory facts (they can be numerous and the list can grow), so this is the one piece that still
+// needs a live per-request fetch.
 export async function buildPostdocworksContext(deviceId: string): Promise<string | null> {
   const linkedUserId = await getLinkedPostdocworksUserId(deviceId).catch(() => null);
   if (!linkedUserId) return null;
 
   const profile = await getPostdocworksProfile(linkedUserId).catch(() => null);
-  if (!profile) return null;
+  if (!profile?.orcid || !profile.orcidVerified) return null;
 
-  const lines = [
-    `Name: ${profile.displayName || "(not set)"}`,
-    `Research area: ${profile.researchArea || "(not set)"}`,
-    `Institution: ${profile.institution || "(not set)"}`,
-  ];
-  if (profile.verifiedBadges.length > 0) lines.push(`Verified badges: ${profile.verifiedBadges.join(", ")}`);
-  if (profile.achievements.length > 0) lines.push(`Achievements: ${profile.achievements.map((a) => a.title).join("; ")}`);
+  const papers = await getPapersByOrcid(profile.orcid, 10).catch(() => []);
+  if (papers.length === 0) return null;
 
-  if (profile.orcid && profile.orcidVerified) {
-    const papers = await getPapersByOrcid(profile.orcid, 10).catch(() => []);
-    if (papers.length > 0) {
-      lines.push(`Recent publications (via ORCID ${profile.orcid}):`);
-      papers.slice(0, 10).forEach((p) => lines.push(`- "${p.title}" (${p.pubdate})`));
-    }
-  }
-
-  return lines.join("\n");
+  return [`Recent publications (via ORCID ${profile.orcid}):`, ...papers.map((p) => `- "${p.title}" (${p.pubdate})`)].join("\n");
 }
