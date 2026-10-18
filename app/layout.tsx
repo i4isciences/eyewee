@@ -10,6 +10,7 @@ export const metadata: Metadata = {
   title: "eyewee",
   description:
     "You say it — eyewee carries it, guides it, and cracks the toughest problems. The AI companion for postdocs navigating a new country, a new lab, and an unsolved project.",
+  robots: { index: false, follow: false, nocache: true },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

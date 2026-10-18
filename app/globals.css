@@ -992,6 +992,29 @@ p {
   color: var(--ink-dim);
   margin: 0 0 10px;
 }
+.persona-side-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.persona-side-section-header h2 {
+  margin: 0 0 10px;
+}
+.persona-memory-delete-all {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-dim);
+  margin-bottom: 10px;
+}
+.persona-memory-delete-all:hover {
+  color: #b3261e;
+}
+.persona-memory-caption {
+  font-size: 11px;
+  color: var(--ink-dim);
+  margin: -4px 0 10px;
+}
 .persona-empty-note {
   font-size: 12.5px;
   color: var(--ink-dim);
@@ -1028,6 +1051,28 @@ p {
   background: rgba(27, 42, 74, 0.06);
   color: var(--ink);
   font-weight: 600;
+}
+.persona-recent-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.persona-recent-row .persona-recent-item {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+}
+.persona-recent-delete {
+  border: none;
+  background: none;
+  color: var(--ink-dim);
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+  padding: 2px 6px;
+}
+.persona-recent-delete:hover {
+  color: #b3261e;
 }
 .persona-recent-when {
   flex-shrink: 0;
@@ -1291,6 +1336,27 @@ p {
   margin-bottom: 6px;
   font-style: italic;
 }
+.persona-bubble-para {
+  margin: 0 0 10px;
+}
+.persona-bubble-para:last-child {
+  margin-bottom: 0;
+}
+.persona-bubble-list {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+.persona-bubble-list:last-child {
+  margin-bottom: 0;
+}
+.persona-bubble-list li {
+  margin-bottom: 4px;
+}
+.persona-bubble-eyewee a {
+  color: var(--gold-deep);
+  font-weight: 600;
+  text-decoration: underline;
+}
 
 /* Per-message 3-dot menu (reply / read aloud) */
 .msg-actions {
@@ -1517,6 +1583,20 @@ p {
   border-radius: 8px;
   padding: 8px 10px;
 }
+.mic-recording-note {
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  margin-bottom: 6px;
+  width: 180px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 9px;
+  white-space: normal;
+}
 .stop-speaking-btn {
   width: 38px;
   height: 38px;
@@ -1539,6 +1619,14 @@ p {
   margin: 8px auto 0;
   font-size: 11.5px;
   color: var(--ink-dim);
+  text-align: center;
+}
+.persona-composer-crisis-note {
+  max-width: 680px;
+  margin: 4px auto 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--gold-deep);
   text-align: center;
 }
 
@@ -1571,6 +1659,11 @@ p {
   font-size: 12.5px;
   color: var(--ink-muted);
   margin: 0;
+}
+.docsearch-upload-note {
+  font-size: 11.5px;
+  color: var(--ink-dim);
+  margin: 4px 0 0;
 }
 .docsearch-paste-box input,
 .docsearch-paste-box textarea {
@@ -1931,5 +2024,184 @@ p {
 .deck-rehearsal-line {
   font-style: italic;
   color: var(--gold-deep) !important;
+}
+
+/* Private-preview access gate (app/access/page.tsx) */
+.access-gate {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(180deg, var(--bg-elevated), var(--bg-elevated-2));
+}
+.access-gate-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  padding: 36px 32px;
+  box-shadow: 0 20px 60px rgba(16, 24, 44, 0.12);
+  text-align: center;
+}
+.access-gate-kicker {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--gold-deep);
+}
+.access-gate-card h1 {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: 24px;
+  color: var(--navy-strong);
+}
+.access-gate-sub {
+  margin: 0 0 24px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+.access-gate-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.access-gate-form input[type="password"] {
+  padding: 12px 14px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 10px;
+  font-size: 15px;
+  text-align: center;
+  letter-spacing: 0.05em;
+}
+.access-gate-form input[type="password"]:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+.access-gate-form button {
+  padding: 12px 14px;
+  border: none;
+  border-radius: 10px;
+  background: var(--navy);
+  color: #fff;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+}
+.access-gate-form button:hover {
+  background: var(--navy-strong);
+}
+.access-gate-error {
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: #b3261e;
+}
+
+/* First-chat consent gate (components/ConsentGate.tsx) */
+.consent-gate {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(180deg, var(--bg-elevated), var(--bg-elevated-2));
+}
+.consent-gate-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  padding: 36px 32px;
+  box-shadow: 0 20px 60px rgba(16, 24, 44, 0.12);
+  text-align: center;
+}
+.consent-gate-kicker {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--gold-deep);
+}
+.consent-gate-card h1 {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: 24px;
+  color: var(--navy-strong);
+}
+.consent-gate-sub {
+  margin: 0 0 22px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+.consent-gate-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink);
+  margin-bottom: 22px;
+  cursor: pointer;
+}
+.consent-gate-checkbox input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+.consent-gate-checkbox a {
+  color: var(--navy);
+  font-weight: 600;
+  text-decoration: underline;
+}
+.consent-gate-card button {
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 10px;
+  background: var(--navy);
+  color: #fff;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+}
+.consent-gate-card button:hover:not(:disabled) {
+  background: var(--navy-strong);
+}
+.consent-gate-card button:disabled {
+  background: var(--border-strong);
+  color: var(--ink-dim);
+  cursor: not-allowed;
+}
+
+/* Shared minimal footer (components/SiteFooter.tsx) */
+.site-footer {
+  padding: 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+}
+.site-footer-brand {
+  font-family: var(--font-display);
+}
+.site-footer-links {
+  display: flex;
+  gap: 16px;
+}
+.site-footer-links a {
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+.site-footer-links a:hover {
+  color: var(--gold-deep);
 }
 

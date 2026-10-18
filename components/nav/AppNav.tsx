@@ -1,16 +1,19 @@
 import Link from "next/link";
 
-export type AppNavPage = "chat" | "leverage" | "document-search";
+export type AppNavPage = "leverage" | "document-search";
 
+// "Chat" isn't a separate nav link here -- the wordmark below already goes to /home, and having
+// both say the same thing was flagged as confusing duplication (pre-launch checklist, item 1).
 const LINKS: { key: AppNavPage; href: string; label: string }[] = [
-  { key: "chat", href: "/home", label: "Chat" },
   { key: "leverage", href: "/leverage", label: "Leverage" },
   { key: "document-search", href: "/document-search", label: "Document Search" },
 ];
 
 // Shared across every app surface (chat, Leverage, Document Search) so a postdoc always knows
 // eyewee's other features exist, instead of discovering /leverage or /document-search by accident.
-export function AppNav({ current }: { current: AppNavPage }) {
+// `current` is omitted on /home -- the wordmark itself already represents "you're on chat", and
+// neither LINKS entry applies there.
+export function AppNav({ current }: { current?: AppNavPage }) {
   return (
     <nav className="app-nav">
       <Link href="/home" className="app-nav-wordmark">

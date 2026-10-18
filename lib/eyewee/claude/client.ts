@@ -25,6 +25,15 @@ function getClient(): Anthropic {
 
 export type ChatTurn = { role: "user" | "assistant"; content: string };
 
+// If the model runs long enough to hit max_tokens despite the system prompt's ~120-word
+// guidance, trim back to the last complete sentence rather than leaving a dangling cut-off
+// clause (pre-launch checklist, 2026-10-18: "long answers never cut off before the end of the
+// sentence"). Falls back to the untrimmed text if no sentence boundary is found at all.
+function trimToLastSentence(text: string): string {
+  const match = text.match(/^[\s\S]*[.!?](?=\s|$)/);
+  return match ? match[0] : text;
+}
+
 export async function generateEyeweeReply(system: string, history: ChatTurn[]): Promise<string> {
   const anthropic = getClient();
   const model = process.env.EYEWEE_CLAUDE_MODEL || DEFAULT_MODEL;
@@ -38,5 +47,6 @@ export async function generateEyeweeReply(system: string, history: ChatTurn[]): 
 
   const textBlock = response.content.find((block) => block.type === "text");
   if (!textBlock || textBlock.type !== "text") throw new Error("Claude returned no text content.");
-  return textBlock.text;
+
+  return response.stop_reason === "max_tokens" ? trimToLastSentence(textBlock.text) : textBlock.text;
 }

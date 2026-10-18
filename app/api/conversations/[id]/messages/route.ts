@@ -9,8 +9,15 @@ import { buildSystemPrompt } from "@/lib/eyewee/claude/systemPrompt";
 import { listMemoryFacts } from "@/lib/eyewee/memory";
 import { suggestMemoryFact, type MemorySuggestion } from "@/lib/eyewee/claude/memorySuggestion";
 import { buildPostdocworksContext } from "@/lib/eyewee/postdocworks/context";
+import { checkRateLimit, rateLimitedResponse } from "@/lib/eyewee/rateLimit";
+import { containsCrisisLanguage, CRISIS_LINE } from "@/lib/eyewee/guardrails/crisisMessage";
+import { hasConsented } from "@/lib/eyewee/consent";
 
 type RouteParams = { params: Promise<{ id: string }> };
+
+const MAX_MESSAGE_LENGTH = 4000;
+const CHAT_RATE_LIMIT = 20;
+const CHAT_RATE_WINDOW_MS = 60 * 60 * 1000;
 
 export async function GET(_request: Request, { params }: RouteParams) {
   const { id } = await params;
@@ -58,7 +65,17 @@ export async function POST(request: Request, { params }: RouteParams) {
   const body = (await request.json().catch(() => ({}))) as { text?: unknown };
   const text = typeof body.text === "string" ? body.text.trim() : "";
 
+  if (!(await hasConsented(deviceId))) {
+    return NextResponse.json({ error: "Please agree to the Terms of Service and Privacy Policy before chatting." }, { status: 403 });
+  }
+
   if (!text) return NextResponse.json({ error: "Message can't be empty." }, { status: 400 });
+  if (text.length > MAX_MESSAGE_LENGTH) {
+    return NextResponse.json({ error: `Messages are limited to ${MAX_MESSAGE_LENGTH} characters.` }, { status: 413 });
+  }
+
+  const rate = checkRateLimit(`chat:${deviceId}`, CHAT_RATE_LIMIT, CHAT_RATE_WINDOW_MS);
+  if (!rate.allowed) return rateLimitedResponse(rate.resetAt, "You've sent a lot of messages in the last hour. Please try again a bit later.");
 
   if (containsPhi(text)) {
     return NextResponse.json(
@@ -71,6 +88,14 @@ export async function POST(request: Request, { params }: RouteParams) {
 
   const userMessage = await appendMessage(deviceId, id, "user", text);
   if (userMessage === null) return NextResponse.json({ error: "Conversation not found." }, { status: 404 });
+
+  // Crisis language short-circuits straight to the one approved line -- no model call, so this
+  // can never depend on (or be talked out of) by the AI. Checked on the user's own message, ahead
+  // of everything else, regardless of liveAllowed/crisis-gate state. See crisisMessage.ts.
+  if (containsCrisisLanguage(text)) {
+    const eyeweeMessage = await appendMessage(deviceId, id, "eyewee", CRISIS_LINE);
+    return NextResponse.json({ userMessage, eyeweeMessage, suggestedFact: null });
+  }
 
   const liveAllowed = await isLiveChatAllowedForRequest();
   const { reply: replyText, history } = await draftEyeweeReply(deviceId, priorMessages, text, liveAllowed);

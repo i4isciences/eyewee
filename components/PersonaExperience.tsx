@@ -9,6 +9,9 @@ import { useVoiceSession } from "@/components/voice/useVoiceSession";
 import { AppNav } from "@/components/nav/AppNav";
 import { MessageActions } from "@/components/chat/MessageActions";
 import { formatQuotedReply, splitQuotedReply } from "@/lib/eyewee/chat/quoteReply";
+import { CRISIS_LINE } from "@/lib/eyewee/guardrails/crisisMessage";
+import { MarkdownLite } from "@/components/chat/MarkdownLite";
+import { stripMarkdown } from "@/lib/eyewee/chat/stripMarkdown";
 
 type Message = { id: string; sender: "user" | "eyewee"; text: string };
 type ConversationSummary = { id: string; title: string; updatedAt: string };
@@ -145,6 +148,17 @@ export function PersonaExperience() {
     setMemoryFacts((prev) => prev.filter((f) => f.id !== id));
   }
 
+  async function deleteAllFacts() {
+    await fetch("/api/memory", { method: "DELETE" }).catch(() => {});
+    setMemoryFacts([]);
+  }
+
+  async function deleteConversationItem(id: string) {
+    await fetch(`/api/conversations/${id}`, { method: "DELETE" }).catch(() => {});
+    setConversations((prev) => prev.filter((c) => c.id !== id));
+    if (id === activeId) startNewConversation();
+  }
+
   function startEditingFact(fact: MemoryFact) {
     setEditingFactId(fact.id);
     setEditingFactText(fact.text);
@@ -236,7 +250,7 @@ export function PersonaExperience() {
   }
 
   function readMessageAloud(message: Message) {
-    void voice.speak(splitQuotedReply(message.text).body);
+    void voice.speak(stripMarkdown(splitQuotedReply(message.text).body));
   }
 
   async function submit(rawText: string) {
@@ -286,7 +300,7 @@ export function PersonaExperience() {
         setMessages((prev) => [...prev, data.eyeweeMessage as Message]);
         setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, updatedAt: new Date().toISOString() } : c)).sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt)));
         settleToSpark();
-        void voice.speak(data.eyeweeMessage.text);
+        void voice.speak(stripMarkdown(data.eyeweeMessage.text));
         if (data.suggestedFact) setPendingFact(data.suggestedFact);
         refreshUsage();
       }
@@ -301,7 +315,7 @@ export function PersonaExperience() {
   if (mode === "hero") {
     return (
       <div className="hero-page">
-        <AppNav current="chat" />
+        <AppNav />
         {conversations.length > 0 && (
           <div className="hero-topbar">
             <button type="button" className="hero-topbar-link" onClick={() => loadConversation(conversations[0].id)}>
@@ -428,7 +442,15 @@ export function PersonaExperience() {
         </div>
 
         <div className="persona-side-section">
-          <h2>Memory</h2>
+          <div className="persona-side-section-header">
+            <h2>Memory</h2>
+            {memoryFacts.length > 0 && (
+              <button type="button" className="persona-memory-delete-all" onClick={deleteAllFacts}>
+                Delete all
+              </button>
+            )}
+          </div>
+          <p className="persona-memory-caption">What eyewee remembers about you — click any item to edit it.</p>
           {memoryFacts.length === 0 ? (
             <p className="persona-empty-note">eyewee hasn&rsquo;t saved anything about you yet.</p>
           ) : (
@@ -484,7 +506,7 @@ export function PersonaExperience() {
           ) : (
             <ul className="persona-recent-list">
               {conversations.map((c) => (
-                <li key={c.id}>
+                <li key={c.id} className="persona-recent-row">
                   <button
                     type="button"
                     className={`persona-recent-item${c.id === activeId ? " is-active" : ""}`}
@@ -492,6 +514,14 @@ export function PersonaExperience() {
                   >
                     {c.title}
                     <span className="persona-recent-when">{relativeDay(c.updatedAt)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="persona-recent-delete"
+                    aria-label={`Delete conversation: ${c.title}`}
+                    onClick={() => deleteConversationItem(c.id)}
+                  >
+                    ×
                   </button>
                 </li>
               ))}
@@ -539,7 +569,7 @@ export function PersonaExperience() {
                   <div className="persona-bubble-wrap">
                     <div className={`persona-bubble persona-bubble-${message.sender}`}>
                       {quote && <div className="persona-bubble-quote">{quote}</div>}
-                      {body}
+                      {message.sender === "eyewee" ? <MarkdownLite text={body} /> : body}
                     </div>
                     <MessageActions onReply={() => startReply(message)} onReadAloud={() => readMessageAloud(message)} />
                     {replyingToId === message.id && (
@@ -619,7 +649,8 @@ export function PersonaExperience() {
               &#8593;
             </button>
           </div>
-          <p className="persona-composer-note">eyewee can make mistakes. Check important information independently. Patient names, MRNs, or other health-identifying info don&rsquo;t belong here.</p>
+          <p className="persona-composer-note">eyewee is an AI. It can make mistakes. Check anything important. Patient names, MRNs, or other health-identifying info don&rsquo;t belong here.</p>
+          <p className="persona-composer-crisis-note">{CRISIS_LINE}</p>
         </div>
       </div>
     </div>

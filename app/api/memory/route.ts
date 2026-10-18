@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { getOrCreateDeviceId } from "@/lib/eyewee/session/deviceId";
-import { createMemoryFact, listMemoryFacts, UnsafeMemoryFactError, type MemoryCategory } from "@/lib/eyewee/memory";
+import { createMemoryFact, deleteAllMemoryFacts, listMemoryFacts, UnsafeMemoryFactError, type MemoryCategory } from "@/lib/eyewee/memory";
 
-const VALID_CATEGORIES: MemoryCategory[] = ["field", "focus", "badge", "preference", "other"];
+// "badge" is deliberately excluded -- a postdoc's own conversation can never create a badge/
+// verification memory fact (eyewee cannot confirm one); those only ever come from the trusted
+// PostdocWorks sync path (lib/eyewee/postdocworks/syncMemory.ts), which writes directly and never
+// goes through this endpoint.
+const VALID_CATEGORIES: MemoryCategory[] = ["field", "focus", "preference", "other"];
 
 export async function GET() {
   const { deviceId } = await getOrCreateDeviceId();
@@ -28,4 +32,10 @@ export async function POST(request: Request) {
     if (error instanceof UnsafeMemoryFactError) return NextResponse.json({ error: error.message }, { status: 422 });
     return NextResponse.json({ error: "Couldn't save that right now." }, { status: 500 });
   }
+}
+
+export async function DELETE() {
+  const { deviceId } = await getOrCreateDeviceId();
+  await deleteAllMemoryFacts(deviceId);
+  return NextResponse.json({ success: true });
 }

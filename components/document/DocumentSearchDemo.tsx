@@ -18,6 +18,8 @@ const SAMPLE_PARAGRAPHS = [
 type PubMedHit = { pmid: string; title: string; source: string; pubdate: string; url: string };
 type DocState = { title: string; meta: string; paragraphs: string[] } | null;
 
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+
 // Document Search -- docs/DEVELOPMENT_PLAN.md §6.8. Three ways to get something to search:
 // the sample, pasting/uploading your own (.txt or .pdf, extracted entirely client-side), or
 // pulling a real paper's abstract straight from PubMed. The find-bar itself (DocumentViewer) is
@@ -48,6 +50,11 @@ export function DocumentSearchDemo() {
     const file = event.target.files?.[0];
     event.target.value = ""; // allow re-selecting the same file later
     if (!file) return;
+
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setUploadError("That file is too large — eyewee accepts files up to 5 MB.");
+      return;
+    }
 
     setUploadError(null);
     setUploading(true);
@@ -153,6 +160,10 @@ export function DocumentSearchDemo() {
                 </button>
               )}
             </div>
+            <p className="docsearch-upload-note">Do not upload anything you are not allowed to share.</p>
+            <p className="docsearch-upload-note">
+              Your file is read in this browser only — it is never sent to eyewee&rsquo;s server or stored anywhere. Up to 5 MB.
+            </p>
             {uploadError && <p className="leverage-error">{uploadError}</p>}
           </div>
         )}

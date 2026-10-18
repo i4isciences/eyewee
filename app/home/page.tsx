@@ -1,5 +1,10 @@
 import { PersonaExperience } from "@/components/PersonaExperience";
+import { ConsentGate } from "@/components/ConsentGate";
 
 export default function HomePage() {
-  return <PersonaExperience />;
+  return (
+    <ConsentGate>
+      <PersonaExperience />
+    </ConsentGate>
+  );
 }

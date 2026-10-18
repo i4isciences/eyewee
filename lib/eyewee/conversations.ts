@@ -60,6 +60,16 @@ export async function getMessages(deviceId: string, conversationId: string): Pro
   return (data ?? []).map((row) => ({ id: row.id, sender: row.sender, text: row.text, createdAt: row.created_at }));
 }
 
+// Messages cascade-delete with their conversation (on delete cascade, see the schema migration) --
+// nothing else to clean up here.
+export async function deleteConversation(deviceId: string, conversationId: string): Promise<boolean> {
+  if (!(await assertOwnedConversation(deviceId, conversationId))) return false;
+  const supabase = createEyeweeServiceClient();
+  const { error } = await supabase.from("eyewee_device_conversations").delete().eq("id", conversationId);
+  if (error) throw error;
+  return true;
+}
+
 export async function appendMessage(
   deviceId: string,
   conversationId: string,

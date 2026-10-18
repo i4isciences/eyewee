@@ -130,3 +130,9 @@ export async function deleteMemoryFact(deviceId: string, factId: string): Promis
   if (error) throw error;
   return true;
 }
+
+export async function deleteAllMemoryFacts(deviceId: string): Promise<void> {
+  const supabase = createEyeweeServiceClient();
+  const { error } = await supabase.from("eyewee_device_memory_facts").delete().eq("device_id", deviceId);
+  if (error) throw error;
+}
