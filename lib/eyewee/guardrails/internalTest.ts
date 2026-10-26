@@ -8,8 +8,9 @@ import { cookies } from "next/headers";
 // deliberately separate mechanism: a URL only the team has, which marks *that browser* as an
 // internal tester via an httpOnly cookie. It never flips the public switch, and has no UI entry
 // point anywhere a normal visitor would find it.
-const COOKIE_NAME = "eyewee_internal_tester";
-const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
+export const INTERNAL_TESTER_COOKIE_NAME = "eyewee_internal_tester";
+export const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
+const COOKIE_NAME = INTERNAL_TESTER_COOKIE_NAME;
 
 export function isInternalTestTokenValid(token: string): boolean {
   const expected = process.env.EYEWEE_INTERNAL_TEST_TOKEN;
