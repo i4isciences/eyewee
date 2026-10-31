@@ -4,14 +4,14 @@ import { GATE_COOKIE_NAME, isCorrectAccessCode, signGateCookieValue } from "@/li
 // Only ever redirect within this site -- "next" is attacker-controlled input (it's a plain
 // query/form value), so an absolute or protocol-relative ("//evil.com") value must be rejected.
 function safeNextPath(raw: string | null): string {
-  if (!raw || !raw.startsWith("/") || raw.startsWith("//")) return "/";
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw === "/") return "/home";
   return raw;
 }
 
 export async function POST(request: Request) {
   const form = await request.formData();
   const code = String(form.get("code") ?? "");
-  const next = safeNextPath(String(form.get("next") ?? "/"));
+  const next = safeNextPath(String(form.get("next") ?? "/home"));
 
   if (!isCorrectAccessCode(code)) {
     const url = new URL("/access", request.url);

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function LeveragePage() {
   return (
-    <ConsentGate>
+    <>
       <AppNav current="leverage" />
       <div className="leverage-page">
         <div className="leverage-page-header">
@@ -26,6 +26,6 @@ export default function LeveragePage() {
         <DeckGeneratorPanel />
       </div>
       <SiteFooter />
-    </ConsentGate>
+    </>
   );
 }

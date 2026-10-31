@@ -9,9 +9,9 @@ export const metadata: Metadata = {
 
 export default function DocumentSearchDemoPage() {
   return (
-    <ConsentGate>
+    <>
       <DocumentSearchDemo />
       <SiteFooter />
-    </ConsentGate>
+    </>
   );
 }

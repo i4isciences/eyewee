@@ -19,7 +19,7 @@ export default async function AccessPage({
         <h1>Enter the access code</h1>
         <p className="access-gate-sub">This site isn&rsquo;t public yet. Ask i4iSciences for the code if you don&rsquo;t have it.</p>
         <form method="POST" action="/api/access/verify" className="access-gate-form">
-          <input type="hidden" name="next" value={next ?? "/"} />
+          <input type="hidden" name="next" value={next && next !== "/" ? next : "/home"} />
           <input type="password" name="code" placeholder="Access code" autoFocus required autoComplete="off" />
           <button type="submit">Continue</button>
         </form>

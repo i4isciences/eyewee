@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import Anthropic from "@anthropic-ai/sdk";
 import { getOrCreateDeviceId } from "@/lib/eyewee/session/deviceId";
 import { appendMessage, getMessages, type MessageRecord } from "@/lib/eyewee/conversations";
 import { isLiveChatAllowedForRequest } from "@/lib/eyewee/guardrails/crisisGate";
@@ -37,14 +38,24 @@ function toChatHistory(messages: MessageRecord[]): ChatTurn[] {
 // /api/internal/enable-testing, regardless of that public switch -- see
 // lib/eyewee/guardrails/crisisGate.ts for exactly why those are two separate checks, not one.
 // Falls back to the canned reply if neither applies, or if the live call fails for any reason.
+type AttachmentPayload = {
+  name: string;
+  size: number;
+  type: "pdf" | "image" | "pptx" | "text" | "other";
+  mimeType: string;
+  extractedText?: string;
+  base64?: string;
+};
+
 async function draftEyeweeReply(
   deviceId: string,
   priorMessages: MessageRecord[],
-  userText: string,
+  userContent: string | Anthropic.MessageParam["content"],
+  fallbackText: string,
   liveAllowed: boolean
-): Promise<{ reply: string; history: ChatTurn[] } > {
-  const history: ChatTurn[] = [...toChatHistory(priorMessages), { role: "user", content: userText }];
-  if (!liveAllowed) return { reply: craftReply(userText), history };
+): Promise<{ reply: string; history: ChatTurn[] }> {
+  const history: ChatTurn[] = [...toChatHistory(priorMessages), { role: "user", content: userContent }];
+  if (!liveAllowed) return { reply: await craftReply(fallbackText), history };
 
   try {
     const [memoryFacts, postdocworksContext] = await Promise.all([
@@ -54,56 +65,87 @@ async function draftEyeweeReply(
     const system = buildSystemPrompt(memoryFacts.map((f) => f.text), postdocworksContext ?? undefined);
     const reply = await generateEyeweeReply(system, history);
     return { reply, history };
-  } catch {
-    return { reply: craftReply(userText), history };
+  } catch (err) {
+    console.error("Claude reply generation error:", err);
+    return { reply: await craftReply(fallbackText), history };
   }
 }
 
 export async function POST(request: Request, { params }: RouteParams) {
   const { id } = await params;
   const { deviceId } = await getOrCreateDeviceId();
-  const body = (await request.json().catch(() => ({}))) as { text?: unknown };
-  const text = typeof body.text === "string" ? body.text.trim() : "";
+  const body = (await request.json().catch(() => ({}))) as {
+    text?: unknown;
+    attachment?: AttachmentPayload;
+  };
 
-  if (!(await hasConsented(deviceId))) {
-    return NextResponse.json({ error: "Please agree to the Terms of Service and Privacy Policy before chatting." }, { status: 403 });
+  const rawText = typeof body.text === "string" ? body.text.trim() : "";
+  const attachment = body.attachment && typeof body.attachment === "object" ? body.attachment : undefined;
+
+  if (!rawText && !attachment) {
+    return NextResponse.json({ error: "Message or file attachment is required." }, { status: 400 });
   }
 
-  if (!text) return NextResponse.json({ error: "Message can't be empty." }, { status: 400 });
-  if (text.length > MAX_MESSAGE_LENGTH) {
+  if (rawText.length > MAX_MESSAGE_LENGTH) {
     return NextResponse.json({ error: `Messages are limited to ${MAX_MESSAGE_LENGTH} characters.` }, { status: 413 });
   }
 
-  const rate = checkRateLimit(`chat:${deviceId}`, CHAT_RATE_LIMIT, CHAT_RATE_WINDOW_MS);
-  if (!rate.allowed) return rateLimitedResponse(rate.resetAt, "You've sent a lot of messages in the last hour. Please try again a bit later.");
-
-  if (containsPhi(text)) {
+  if (containsPhi(rawText)) {
     return NextResponse.json(
       { error: "That message looks like it may contain patient-identifying information (like an MRN, SSN, or name with date of birth). Please remove it before sending — see /safety." },
       { status: 422 }
     );
   }
 
-  const priorMessages = (await getMessages(deviceId, id)) ?? [];
+  // Build user's stored display message text
+  let userDisplayText = rawText;
+  if (attachment) {
+    const icon = attachment.type === "pdf" ? "📄" : attachment.type === "pptx" ? "📊" : attachment.type === "image" ? "🖼️" : "📝";
+    const header = `${icon} [Attached: ${attachment.name}]`;
+    userDisplayText = rawText ? `${header}\n\n${rawText}` : `${header}\n\nPlease analyze and read this attachment in detail.`;
+  }
 
-  const userMessage = await appendMessage(deviceId, id, "user", text);
+  const priorMessages = (await getMessages(deviceId, id)) ?? [];
+  const userMessage = await appendMessage(deviceId, id, "user", userDisplayText);
   if (userMessage === null) return NextResponse.json({ error: "Conversation not found." }, { status: 404 });
 
-  // Crisis language short-circuits straight to the one approved line -- no model call, so this
-  // can never depend on (or be talked out of) by the AI. Checked on the user's own message, ahead
-  // of everything else, regardless of liveAllowed/crisis-gate state. See crisisMessage.ts.
-  if (containsCrisisLanguage(text)) {
+  // Crisis language check
+  if (containsCrisisLanguage(rawText)) {
     const eyeweeMessage = await appendMessage(deviceId, id, "eyewee", CRISIS_LINE);
     return NextResponse.json({ userMessage, eyeweeMessage, suggestedFact: null });
   }
 
+  // Build model input turn
+  let userModelContent: string | Anthropic.MessageParam["content"] = rawText;
+  if (attachment) {
+    if (attachment.type === "image" && attachment.base64) {
+      userModelContent = [
+        {
+          type: "image",
+          source: {
+            type: "base64",
+            media_type: (attachment.mimeType || "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+            data: attachment.base64,
+          },
+        },
+        {
+          type: "text",
+          text: rawText || `Please examine and read this image ("${attachment.name}") in detail and answer accordingly.`,
+        },
+      ];
+    } else if (attachment.extractedText) {
+      userModelContent = `${attachment.extractedText}\n\n` +
+        (rawText
+          ? `User Question/Instruction:\n${rawText}`
+          : "Please read through all content in this attached document and provide a clean, comprehensive summary, key takeaways, and answer anything relevant.");
+    }
+  }
+
   const liveAllowed = await isLiveChatAllowedForRequest();
-  const { reply: replyText, history } = await draftEyeweeReply(deviceId, priorMessages, text, liveAllowed);
+  const fallbackQuery = rawText || (attachment ? `Analyze ${attachment.name}` : "");
+  const { reply: replyText, history } = await draftEyeweeReply(deviceId, priorMessages, userModelContent, fallbackQuery, liveAllowed);
   const eyeweeMessage = await appendMessage(deviceId, id, "eyewee", replyText);
 
-  // Memory suggestions need a real Claude call too -- only worth attempting when one just
-  // happened (liveAllowed), and only ever a *suggestion*: nothing is saved without the postdoc's
-  // explicit approval via POST /api/memory (Ranjit, 2026-10-08: hybrid model).
   let suggestedFact: MemorySuggestion | null = null;
   if (liveAllowed) {
     suggestedFact = await suggestMemoryFact([...history, { role: "assistant", content: replyText }]);

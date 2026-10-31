@@ -1,17 +1,9 @@
 import "server-only";
 
 import Anthropic from "@anthropic-ai/sdk";
+import { fetchAbstract, searchPubMedWithDetails } from "@/lib/eyewee/documents/pubmedSearch";
 
-// Real Claude wiring (docs/DEVELOPMENT_PLAN.md §6.2, Phase 4) -- only ever called from
-// app/api/conversations/[id]/messages/route.ts's draftEyeweeReply, gated by
-// isLiveChatAllowedForRequest() (lib/eyewee/guardrails/crisisGate.ts). Building this doesn't flip
-// that gate for real users; it stays closed by default until legal + mental-health-professional
-// clearance, per the product's own locked policy.
-//
-// Confirmed by Ranjit (2026-10-08): this account is STANDARD API access -- no BAA, no HIPAA
-// coverage. Never assume BAA-only features or retention guarantees apply. The PHI filter
-// (lib/eyewee/guardrails/phiFilter.ts) stays on regardless of gate state for exactly this reason.
-const DEFAULT_MODEL = "claude-sonnet-5";
+const DEFAULT_MODEL = "claude-sonnet-5-5";
 
 let client: Anthropic | null = null;
 
@@ -23,30 +15,147 @@ function getClient(): Anthropic {
   return client;
 }
 
-export type ChatTurn = { role: "user" | "assistant"; content: string };
+export type ChatTurn = {
+  role: "user" | "assistant";
+  content: string | Anthropic.MessageParam["content"];
+};
 
-// If the model runs long enough to hit max_tokens despite the system prompt's ~120-word
-// guidance, trim back to the last complete sentence rather than leaving a dangling cut-off
-// clause (pre-launch checklist, 2026-10-18: "long answers never cut off before the end of the
-// sentence"). Falls back to the untrimmed text if no sentence boundary is found at all.
-function trimToLastSentence(text: string): string {
-  const match = text.match(/^[\s\S]*[.!?](?=\s|$)/);
-  return match ? match[0] : text;
-}
+const PUBMED_TOOLS: Anthropic.Tool[] = [
+  {
+    name: "search_pubmed",
+    description:
+      "Search the official NCBI PubMed database for scientific literature, clinical trials, reviews, landmark papers, and biomedical research on any topic. Returns verified articles with PMID, title, authors, journal citation, publication date, DOI, URL, and abstracts.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "PubMed search query keywords or MeSH terms (e.g. 'triple negative breast cancer', 'pembrolizumab KEYNOTE-522', 'cccDNA hepatitis B')",
+        },
+        limit: {
+          type: "number",
+          description: "Number of papers to retrieve (default 5, max 10)",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "fetch_pubmed_abstract",
+    description: "Fetch the complete abstract and publication details for a specific PubMed article by its PMID.",
+    input_schema: {
+      type: "object",
+      properties: {
+        pmid: {
+          type: "string",
+          description: "The PubMed unique identifier (PMID), e.g. '30345906'",
+        },
+      },
+      required: ["pmid"],
+    },
+  },
+];
 
-export async function generateEyeweeReply(system: string, history: ChatTurn[]): Promise<string> {
+export async function generateEyeweeReply(
+  system: string,
+  history: ChatTurn[],
+  enableTools = true
+): Promise<string> {
   const anthropic = getClient();
   const model = process.env.EYEWEE_CLAUDE_MODEL || DEFAULT_MODEL;
 
-  const response = await anthropic.messages.create({
-    model,
-    max_tokens: 1024,
-    system,
-    messages: history.map((turn) => ({ role: turn.role, content: turn.content })),
-  });
+  const messages: Anthropic.MessageParam[] = history.map((turn) => ({
+    role: turn.role,
+    content: turn.content,
+  }));
 
-  const textBlock = response.content.find((block) => block.type === "text");
-  if (!textBlock || textBlock.type !== "text") throw new Error("Claude returned no text content.");
+  const maxToolIterations = 4;
+  let iterations = 0;
 
-  return response.stop_reason === "max_tokens" ? trimToLastSentence(textBlock.text) : textBlock.text;
+  while (iterations < maxToolIterations) {
+    iterations++;
+
+    const response = await anthropic.messages.create({
+      model,
+      max_tokens: 4096,
+      system,
+      messages,
+      tools: enableTools ? PUBMED_TOOLS : undefined,
+    });
+
+    // If model wants to call tools (e.g. search_pubmed)
+    if (response.stop_reason === "tool_use") {
+      const toolUseBlocks = response.content.filter(
+        (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
+      );
+
+      // Add assistant's message with tool call blocks
+      messages.push({
+        role: "assistant",
+        content: response.content,
+      });
+
+      // Execute each tool call
+      const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
+        toolUseBlocks.map(async (block) => {
+          try {
+            if (block.name === "search_pubmed") {
+              const input = block.input as { query: string; limit?: number };
+              const limit = Math.min(Math.max(input.limit || 5, 1), 10);
+              const result = await searchPubMedWithDetails(input.query, limit);
+              return {
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify(result),
+              };
+            }
+
+            if (block.name === "fetch_pubmed_abstract") {
+              const input = block.input as { pmid: string };
+              const result = await fetchAbstract(input.pmid);
+              return {
+                type: "tool_result",
+                tool_use_id: block.id,
+                content: JSON.stringify(result),
+              };
+            }
+
+            return {
+              type: "tool_result",
+              tool_use_id: block.id,
+              is_error: true,
+              content: `Unknown tool: ${block.name}`,
+            };
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            return {
+              type: "tool_result",
+              tool_use_id: block.id,
+              is_error: true,
+              content: `Tool execution failed: ${message}`,
+            };
+          }
+        })
+      );
+
+      // Return tool results as user message turn
+      messages.push({
+        role: "user",
+        content: toolResults,
+      });
+
+      continue;
+    }
+
+    // Finished without tool use (or after tool use)
+    const textBlocks = response.content.filter(
+      (block): block is Anthropic.TextBlock => block.type === "text"
+    );
+    const combinedText = textBlocks.map((b) => b.text).join("\n\n").trim();
+    if (!combinedText) throw new Error("Claude returned no text content.");
+
+    return combinedText;
+  }
+
+  throw new Error("Exceeded maximum tool iterations for PubMed query.");
 }

@@ -12,6 +12,7 @@ import { formatQuotedReply, splitQuotedReply } from "@/lib/eyewee/chat/quoteRepl
 import { CRISIS_LINE } from "@/lib/eyewee/guardrails/crisisMessage";
 import { MarkdownLite } from "@/components/chat/MarkdownLite";
 import { stripMarkdown } from "@/lib/eyewee/chat/stripMarkdown";
+import { processAttachment, type AttachmentData } from "@/lib/eyewee/documents/extractAttachment";
 
 type Message = { id: string; sender: "user" | "eyewee"; text: string };
 type ConversationSummary = { id: string; title: string; updatedAt: string };
@@ -25,10 +26,10 @@ type PostdocworksStatus = {
 };
 
 const SUGGESTED_PROMPTS = [
+  "PUBMED, can you take out 5 main papers from pubmed on triple negative breast cancer?",
+  "Help me get through the literature systematically",
   "Help me explain my project to someone outside my field",
   "What should I sort out in my first month here?",
-  "I'm stuck on where to even start with this",
-  "Help me get through the literature systematically",
 ];
 
 const REPOSITORY_LABEL: Record<StorageRepository, string> = {
@@ -81,6 +82,59 @@ export function PersonaExperience() {
   const threadRef = useRef<HTMLDivElement>(null);
   const sparkTimer = useRef<number | null>(null);
   const voice = useVoiceSession();
+
+  const [attachment, setAttachment] = useState<AttachmentData | null>(null);
+  const [extractingAttachment, setExtractingAttachment] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setAttachmentError(null);
+    setExtractingAttachment(true);
+    try {
+      const data = await processAttachment(file);
+      setAttachment(data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Couldn't read that file.";
+      setAttachmentError(msg);
+    } finally {
+      setExtractingAttachment(false);
+    }
+  }
+
+  function removeAttachment() {
+    setAttachment(null);
+    setAttachmentError(null);
+  }
+
+  function renderAttachmentChip() {
+    if (!attachment) return null;
+    const icon = attachment.type === "pdf" ? "📄" : attachment.type === "pptx" ? "📊" : attachment.type === "image" ? "🖼️" : "📝";
+    return (
+      <div className="composer-attachment-preview">
+        <div className="attachment-chip">
+          {attachment.type === "image" && attachment.previewUrl ? (
+            <img src={attachment.previewUrl} alt={attachment.name} className="attachment-thumb" />
+          ) : (
+            <span className="attachment-icon">{icon}</span>
+          )}
+          <div className="attachment-meta">
+            <span className="attachment-name" title={attachment.name}>
+              {attachment.name}
+            </span>
+            <span className="attachment-size">({(attachment.size / 1024).toFixed(0)} KB)</span>
+          </div>
+          <button type="button" className="attachment-remove-btn" onClick={removeAttachment} aria-label="Remove attachment" title="Remove attachment">
+            ✕
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   function refreshMemory() {
     fetch("/api/memory")
@@ -210,6 +264,8 @@ export function PersonaExperience() {
     setActiveId(null);
     setMessages([]);
     setHeroInput("");
+    setAttachment(null);
+    setAttachmentError(null);
   }
 
   async function disconnectStorage(repository: StorageRepository) {
@@ -253,14 +309,15 @@ export function PersonaExperience() {
     void voice.speak(stripMarkdown(splitQuotedReply(message.text).body));
   }
 
-  async function submit(rawText: string) {
+  async function submit(rawText: string, attachedFile = attachment) {
     const text = rawText.trim();
-    if (!text || sending) return;
+    if ((!text && !attachedFile) || sending || extractingAttachment) return;
     if (sparkTimer.current) window.clearTimeout(sparkTimer.current);
 
     let conversationId = activeId;
     if (!conversationId) {
-      const title = text.length > 60 ? `${text.slice(0, 57)}...` : text;
+      const displayTitle = text || (attachedFile ? `Attached: ${attachedFile.name}` : "New conversation");
+      const title = displayTitle.length > 60 ? `${displayTitle.slice(0, 57)}...` : displayTitle;
       try {
         const response = await fetch("/api/conversations", {
           method: "POST",
@@ -281,7 +338,15 @@ export function PersonaExperience() {
     setMode("thread");
     setHeroInput("");
     setComposerInput("");
-    setMessages((prev) => [...prev, { id: uid(), sender: "user", text }]);
+    setAttachment(null);
+    setAttachmentError(null);
+
+    const icon = attachedFile ? (attachedFile.type === "pdf" ? "📄" : attachedFile.type === "pptx" ? "📊" : attachedFile.type === "image" ? "🖼️" : "📝") : "";
+    const userMsgText = attachedFile
+      ? `${icon} [Attached: ${attachedFile.name}]\n\n${text || "Please analyze and read this attachment in detail."}`
+      : text;
+
+    setMessages((prev) => [...prev, { id: uid(), sender: "user", text: userMsgText }]);
     setSending(true);
     setEyeState("thinking");
     requestAnimationFrame(() => threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight }));
@@ -290,7 +355,19 @@ export function PersonaExperience() {
       const response = await fetch(`/api/conversations/${conversationId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({
+          text,
+          attachment: attachedFile
+            ? {
+                name: attachedFile.name,
+                size: attachedFile.size,
+                type: attachedFile.type,
+                mimeType: attachedFile.mimeType,
+                extractedText: attachedFile.extractedText,
+                base64: attachedFile.base64,
+              }
+            : undefined,
+        }),
       });
       const data = (await response.json()) as { eyeweeMessage?: Message; error?: string; suggestedFact?: MemorySuggestion | null };
       if (!response.ok || !data.eyeweeMessage) {
@@ -332,11 +409,31 @@ export function PersonaExperience() {
           <p className="hero-greeting-sub">Say it — eyewee carries it, guides it, and cracks the toughest problems.</p>
 
           <div className="hero-search">
+            {renderAttachmentChip()}
+            {attachmentError && <p className="composer-attachment-error">{attachmentError}</p>}
+            {extractingAttachment && <p className="composer-attachment-loading">Reading attachment...</p>}
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: "none" }}
+              accept=".pdf,image/*,.pptx,.ppt,.txt,.md,.csv,.json"
+              onChange={handleFileSelect}
+            />
             <div className="hero-search-bar">
+              <button
+                type="button"
+                className="composer-attach-btn"
+                aria-label="Upload PDF, Image, or PowerPoint"
+                title="Upload PDF, Image, or PowerPoint"
+                disabled={extractingAttachment}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                +
+              </button>
               <input
                 type="text"
                 value={heroInput}
-                placeholder="Ask eyewee anything"
+                placeholder="Ask eyewee anything, search PubMed, or upload files"
                 onFocus={wakeOnFocus}
                 onBlur={settleOnBlur}
                 onChange={(event) => setHeroInput(event.target.value)}
@@ -357,7 +454,7 @@ export function PersonaExperience() {
                 type="button"
                 className="hero-search-send"
                 aria-label="Send"
-                disabled={heroInput.trim().length === 0}
+                disabled={(heroInput.trim().length === 0 && !attachment) || extractingAttachment}
                 onClick={() => submit(heroInput)}
               >
                 &#8593;
@@ -569,7 +666,23 @@ export function PersonaExperience() {
                   <div className="persona-bubble-wrap">
                     <div className={`persona-bubble persona-bubble-${message.sender}`}>
                       {quote && <div className="persona-bubble-quote">{quote}</div>}
-                      {message.sender === "eyewee" ? <MarkdownLite text={body} /> : body}
+                      {message.sender === "user" && /^([📄📊🖼️📝])\s+\[Attached:\s+([^\]]+)\]/i.test(body) ? (
+                        <div className="user-msg-attachment-block">
+                          <div className="user-msg-attachment-badge">
+                            <span className="user-msg-attachment-icon">{body.slice(0, 2)}</span>
+                            <span className="user-msg-attachment-name">{body.match(/\[Attached:\s+([^\]]+)\]/i)?.[1]}</span>
+                          </div>
+                          {body.replace(/^([📄📊🖼️📝])\s+\[Attached:\s+[^\]]+\]\s*/i, "").trim() && (
+                            <div className="user-msg-body">
+                              {body.replace(/^([📄📊🖼️📝])\s+\[Attached:\s+[^\]]+\]\s*/i, "").trim()}
+                            </div>
+                          )}
+                        </div>
+                      ) : message.sender === "eyewee" ? (
+                        <MarkdownLite text={body} />
+                      ) : (
+                        body
+                      )}
                     </div>
                     <MessageActions onReply={() => startReply(message)} onReadAloud={() => readMessageAloud(message)} />
                     {replyingToId === message.id && (
@@ -618,10 +731,23 @@ export function PersonaExperience() {
         </div>
 
         <div className="persona-composer">
+          {renderAttachmentChip()}
+          {attachmentError && <p className="composer-attachment-error">{attachmentError}</p>}
+          {extractingAttachment && <p className="composer-attachment-loading">Reading attachment...</p>}
           <div className="persona-composer-inner">
+            <button
+              type="button"
+              className="composer-attach-btn"
+              aria-label="Upload PDF, Image, or PowerPoint"
+              title="Upload PDF, Image, or PowerPoint"
+              disabled={extractingAttachment}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              +
+            </button>
             <textarea
               rows={1}
-              placeholder="Message eyewee"
+              placeholder="Message eyewee, search PubMed, or upload files"
               value={composerInput}
               onFocus={wakeOnFocus}
               onBlur={settleOnBlur}
@@ -643,7 +769,7 @@ export function PersonaExperience() {
               type="button"
               className="persona-send-btn"
               aria-label="Send message"
-              disabled={composerInput.trim().length === 0 || sending}
+              disabled={(composerInput.trim().length === 0 && !attachment) || sending || extractingAttachment}
               onClick={() => submit(composerInput)}
             >
               &#8593;

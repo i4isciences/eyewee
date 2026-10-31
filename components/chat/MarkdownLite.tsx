@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 // regardless of what the model outputs.
 function renderInline(text: string, keyPrefix: string): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern = /\*\*(.+?)\*\*|\[([^\]]+)\]\(([^)]+)\)/g;
+  const pattern = /\*\*(.+?)\*\*|\*([^*]+)\*|\[([^\]]+)\]\(([^)]+)\)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
   let i = 0;
@@ -19,11 +19,13 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
     if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
     if (match[1] !== undefined) {
       nodes.push(<strong key={`${keyPrefix}-b${i}`}>{match[1]}</strong>);
+    } else if (match[2] !== undefined) {
+      nodes.push(<em key={`${keyPrefix}-em${i}`}>{match[2]}</em>);
     } else {
-      const href = match[3];
+      const href = match[4];
       nodes.push(
         <a key={`${keyPrefix}-l${i}`} href={href} target={href.startsWith("/") ? undefined : "_blank"} rel="noreferrer">
-          {match[2]}
+          {match[3]}
         </a>
       );
     }
@@ -36,6 +38,10 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
 
 function isBulletLine(line: string): boolean {
   return /^[-*]\s+/.test(line.trim());
+}
+
+function isNumberedLine(line: string): boolean {
+  return /^\d+\.\s+/.test(line.trim());
 }
 
 export function MarkdownLite({ text }: { text: string }) {
@@ -54,6 +60,16 @@ export function MarkdownLite({ text }: { text: string }) {
                 <li key={i}>{renderInline(line.trim().replace(/^[-*]\s+/, ""), `${blockIndex}-${i}`)}</li>
               ))}
             </ul>
+          );
+        }
+
+        if (lines.every(isNumberedLine)) {
+          return (
+            <ol key={blockIndex} className="persona-bubble-ordered-list">
+              {lines.map((line, i) => (
+                <li key={i}>{renderInline(line.trim().replace(/^\d+\.\s+/, ""), `${blockIndex}-${i}`)}</li>
+              ))}
+            </ol>
           );
         }
 

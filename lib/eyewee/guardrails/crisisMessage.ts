@@ -6,7 +6,7 @@
 // exported constant means the UI's permanent disclaimer and the triggered reply can never drift
 // apart.
 export const CRISIS_LINE =
-  "eyewee is not for emergencies or a mental health crisis. In an emergency, call 911 or your local emergency number. Call or text 988 (US), 9-8-8 (Canada), or Tele-MANAS 14416 (India) — 988 takes any text, you don't need to text a specific word.";
+  "eyewee is not for emergencies or a mental health crisis. In an emergency, call 100 (Police, India), 108 (Ambulance, India), or 112 / 911 (Universal Emergency Services).";
 
 // Deliberately broad/conservative: a false positive (an unrelated message getting the crisis
 // reply) costs a moment of confusion. A false negative is the one failure mode this exists to
