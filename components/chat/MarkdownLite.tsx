@@ -24,7 +24,7 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
     } else {
       const href = match[4];
       nodes.push(
-        <a key={`${keyPrefix}-l${i}`} href={href} target={href.startsWith("/") ? undefined : "_blank"} rel="noreferrer">
+        <a key={`${keyPrefix}-l${i}`} className={/Edition$/.test(match[3]) ? "deck-download-btn" : undefined} href={href} target={href.startsWith("/") ? undefined : "_blank"} rel="noreferrer">
           {match[3]}
         </a>
       );

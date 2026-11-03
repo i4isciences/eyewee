@@ -14,6 +14,9 @@ import { checkRateLimit, rateLimitedResponse } from "@/lib/eyewee/rateLimit";
 import { containsCrisisLanguage, CRISIS_LINE } from "@/lib/eyewee/guardrails/crisisMessage";
 import { hasConsented } from "@/lib/eyewee/consent";
 
+// Deck creation (two model calls + file builds) can run inside a chat turn.
+export const maxDuration = 120;
+
 type RouteParams = { params: Promise<{ id: string }> };
 
 const MAX_MESSAGE_LENGTH = 4000;
@@ -63,7 +66,7 @@ async function draftEyeweeReply(
       buildPostdocworksContext(deviceId).catch(() => null),
     ]);
     const system = buildSystemPrompt(memoryFacts.map((f) => f.text), postdocworksContext ?? undefined);
-    const reply = await generateEyeweeReply(system, history);
+    const reply = await generateEyeweeReply(system, history, true, { deviceId });
     return { reply, history };
   } catch (err) {
     console.error("Claude reply generation error:", err);
