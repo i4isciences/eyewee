@@ -2,7 +2,7 @@ import "server-only";
 
 import { checkRateLimit } from "@/lib/eyewee/rateLimit";
 import { buildDeckBuffer, deckFilename, formatGeneratedStamp } from "@/lib/eyewee/decks/build";
-import { storeDeck } from "@/lib/eyewee/decks/storage";
+import { deleteExpiredDecks, storeDeck } from "@/lib/eyewee/decks/storage";
 import { writeDeck, type DeckBrief, type VerifiedReference } from "@/lib/eyewee/decks/writer";
 import { DECK_LIMITS, validateDeck, type DeckEditionName, type DeckJson } from "@/lib/eyewee/decks/schema";
 
@@ -56,6 +56,9 @@ async function buildAndStore(decks: DeckJson[]): Promise<DeckPairResult> {
         } satisfies DeckFileLink;
       })
     );
+    // Free-plan Vercel cron runs only daily, so also sweep expired (24h+) decks on every new deck.
+    // Best effort: a cleanup failure must never break a deck the user is waiting for.
+    await deleteExpiredDecks().catch((err) => console.error("Opportunistic deck cleanup failed:", err));
     return { ok: true, generatedAt: generatedAt.toISOString(), stamp: formatGeneratedStamp(generatedAt), files };
   } catch (err) {
     console.error("Deck build/storage failed:", err);
